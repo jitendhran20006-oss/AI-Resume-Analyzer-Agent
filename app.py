@@ -49,7 +49,21 @@ Return a clear report with these sections:
 Do not invent qualifications or experience. Base the analysis only on the supplied text.
 """
     response = llm.invoke(prompt)
-    return response.content if hasattr(response, "content") else str(response)
+    content = response.content
+
+if isinstance(content, str):
+    return content
+
+if isinstance(content, list):
+    text = ""
+    for item in content:
+        if isinstance(item, dict):
+            text += item.get("text", "")
+        else:
+            text += str(item)
+    return text
+
+return str(content)
 
 HTML = """
 <!DOCTYPE html>
