@@ -7,14 +7,13 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 
 
 # =========================
-# GEMINI API CONFIGURATION
+# GEMINI CONFIGURATION
 # =========================
 
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
 if not GEMINI_API_KEY:
     raise ValueError("GEMINI_API_KEY environment variable is not set.")
-
 
 llm = ChatGoogleGenerativeAI(
     model="gemma-4-31b-it",
@@ -24,19 +23,14 @@ llm = ChatGoogleGenerativeAI(
 
 
 # =========================
-# FASTAPI APPLICATION
+# FASTAPI
 # =========================
 
 app = FastAPI(
     title="AI Resume Analyzer Pro",
-    description="Professional AI-powered resume analysis application",
     version="2.0.0"
 )
 
-
-# =========================
-# REQUEST MODEL
-# =========================
 
 class AnalyzeRequest(BaseModel):
     resume: str
@@ -44,112 +38,92 @@ class AnalyzeRequest(BaseModel):
 
 
 # =========================
-# RESPONSE TEXT HANDLER
+# AI RESPONSE
 # =========================
 
-def extract_response_text(response):
+def get_response_text(response):
     content = getattr(response, "content", response)
 
     if isinstance(content, str):
         return content
 
     if isinstance(content, list):
-        parts = []
+        result = []
 
         for item in content:
-
-            if isinstance(item, dict) and item.get("text"):
-                parts.append(str(item["text"]))
-
+            if isinstance(item, dict):
+                if item.get("text"):
+                    result.append(str(item["text"]))
             elif isinstance(item, str):
-                parts.append(item)
-
+                result.append(item)
             else:
                 text = getattr(item, "text", None)
-
                 if text:
-                    parts.append(str(text))
+                    result.append(str(text))
 
-        if parts:
-            return "\n".join(parts)
+        if result:
+            return "\n".join(result)
 
     return str(content)
 
-
-# =========================
-# AI RESUME ANALYZER
-# =========================
 
 def analyze_resume(resume, job_description):
 
     prompt = f"""
 You are a professional AI Resume Analyzer.
 
-Compare the supplied resume with the supplied job description.
+Compare the resume with the job description.
 
-IMPORTANT RULES:
+Rules:
+- Use only information provided by the user.
+- Never invent skills, experience, education, projects or certificates.
+- Be factual and professional.
+- Give useful suggestions.
+- Keep the report concise.
 
-1. Use ONLY information provided in the resume and job description.
-2. Never invent experience, qualifications, projects, certificates,
-   skills, education or achievements.
-3. Be factual and professional.
-4. Give practical suggestions that the candidate can actually use.
-5. Do not exaggerate the candidate's qualifications.
-
-Return the analysis using EXACTLY these sections:
+Return EXACTLY these sections:
 
 OVERALL MATCH:
-First line must be:
-MATCH_PERCENTAGE: <number>
-
-Then provide a short factual explanation of the match.
+MATCH_PERCENTAGE: <number from 0 to 100>
+Give a short explanation.
 
 MATCHED SKILLS:
-Use "- " bullet points.
+- skill
 
 MISSING SKILLS:
-Use "- " bullet points.
+- skill
 
 RELEVANT EXPERIENCE:
-Use "- " bullet points.
+- item
 
 AI RECOMMENDATIONS:
-Use "- " bullet points.
+- recommendation
 
 ATS KEYWORDS:
-Use "- " bullet points.
-
-Keep the report concise, professional and easy to understand.
+- keyword
 
 
-========================
-RESUME
-========================
-
+RESUME:
 {resume}
 
 
-========================
-JOB DESCRIPTION
-========================
-
+JOB DESCRIPTION:
 {job_description}
 """
 
     try:
         response = llm.invoke(prompt)
-        return extract_response_text(response)
+        return get_response_text(response)
 
     except Exception as e:
-        return f"AI analysis failed: {str(e)}"
+        return "AI analysis failed: " + str(e)
 
 
 # =========================
-# PROFESSIONAL FRONTEND
+# FRONTEND
 # =========================
 
 HTML = """
-
 <!DOCTYPE html>
 
 <html lang="en">
@@ -158,10 +132,10 @@ HTML = """
 
 <meta charset="UTF-8">
 
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport"
+      content="width=device-width, initial-scale=1.0">
 
 <title>AI Resume Analyzer Pro</title>
-
 
 <style>
 
@@ -171,682 +145,356 @@ HTML = """
     padding: 0;
 }
 
-
 body {
-
-    font-family:
-        Inter,
-        -apple-system,
-        BlinkMacSystemFont,
-        "Segoe UI",
-        Roboto,
-        Arial,
-        sans-serif;
-
+    font-family: Arial, Helvetica, sans-serif;
     background: #f5f7fb;
-
     color: #172033;
-
     line-height: 1.6;
 }
 
 
-/* =========================
-   NAVBAR
-   ========================= */
+/* NAVBAR */
 
 .navbar {
-
     height: 70px;
-
     background: white;
-
-    border-bottom: 1px solid #e7eaf0;
-
+    border-bottom: 1px solid #e5e7eb;
     display: flex;
-
     align-items: center;
-
     justify-content: space-between;
-
     padding: 0 6%;
-
 }
-
 
 .logo {
-
     display: flex;
-
     align-items: center;
-
     gap: 10px;
-
     font-size: 20px;
-
-    font-weight: 700;
-
+    font-weight: bold;
 }
-
 
 .logo-icon {
-
     width: 38px;
-
     height: 38px;
-
     border-radius: 10px;
-
-    display: flex;
-
-    align-items: center;
-
-    justify-content: center;
-
     background: #111827;
-
     color: white;
-
-    font-weight: bold;
-
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
-
 
 .logo span {
-
     color: #2563eb;
-
 }
 
-
-.nav-badge {
-
+.badge {
     background: #eef4ff;
-
     color: #2563eb;
-
     padding: 6px 12px;
-
     border-radius: 20px;
-
     font-size: 13px;
-
-    font-weight: 600;
-
+    font-weight: bold;
 }
 
 
-/* =========================
-   HERO
-   ========================= */
+/* HERO */
 
 .hero {
-
     max-width: 1100px;
-
     margin: auto;
-
-    padding: 65px 25px 35px;
-
     text-align: center;
-
+    padding: 60px 25px 35px;
 }
-
 
 .hero h1 {
-
     font-size: 46px;
-
     line-height: 1.15;
-
     margin-bottom: 18px;
-
-    letter-spacing: -1.5px;
-
 }
-
 
 .hero h1 span {
-
     color: #2563eb;
-
 }
-
 
 .hero p {
-
     max-width: 700px;
-
     margin: auto;
-
     color: #64748b;
-
     font-size: 17px;
-
 }
 
 
-/* =========================
-   MAIN CONTAINER
-   ========================= */
+/* MAIN */
 
 .container {
-
     max-width: 1100px;
-
     margin: auto;
-
     padding: 10px 25px 60px;
-
 }
-
-
-/* =========================
-   INPUT GRID
-   ========================= */
 
 .input-grid {
-
     display: grid;
-
     grid-template-columns: 1fr 1fr;
-
     gap: 22px;
-
 }
 
 
-/* =========================
-   CARDS
-   ========================= */
+/* CARDS */
+
+.card,
+.result-card,
+.full-report,
+.score-card {
+    background: white;
+    border: 1px solid #e5e9f0;
+    border-radius: 16px;
+    box-shadow: 0 8px 25px rgba(15, 23, 42, 0.04);
+}
 
 .card {
-
-    background: white;
-
-    border: 1px solid #e5e9f0;
-
-    border-radius: 16px;
-
     padding: 24px;
-
-    box-shadow: 0 8px 25px rgba(15, 23, 42, 0.04);
-
 }
-
 
 .card-header {
-
     display: flex;
-
-    align-items: center;
-
     justify-content: space-between;
-
     margin-bottom: 15px;
-
 }
-
 
 .card-title {
-
     font-size: 17px;
-
-    font-weight: 700;
-
+    font-weight: bold;
 }
-
 
 .card-subtitle {
-
     font-size: 13px;
-
     color: #94a3b8;
-
 }
 
 
-/* =========================
-   TEXTAREA
-   ========================= */
+/* TEXTAREA */
 
 textarea {
-
     width: 100%;
-
     height: 310px;
-
     resize: vertical;
-
     border: 1px solid #dce2ea;
-
     border-radius: 12px;
-
     padding: 15px;
-
-    font-family: inherit;
-
+    font-family: Arial, sans-serif;
     font-size: 14px;
-
     outline: none;
-
     color: #334155;
-
     background: #fafbfc;
-
-    transition: 0.2s;
-
 }
-
 
 textarea:focus {
-
     border-color: #2563eb;
-
     background: white;
-
-    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.08);
-
 }
 
 
-textarea::placeholder {
-
-    color: #a1aab8;
-
-}
-
-
-/* =========================
-   BUTTONS
-   ========================= */
+/* BUTTONS */
 
 .actions {
-
     display: flex;
-
     justify-content: center;
-
     gap: 12px;
-
     margin: 25px 0 35px;
-
 }
-
 
 button {
-
     border: none;
-
     border-radius: 10px;
-
     padding: 13px 25px;
-
     font-size: 15px;
-
-    font-weight: 600;
-
+    font-weight: bold;
     cursor: pointer;
-
-    transition: 0.2s;
-
 }
 
-
-.primary-btn {
-
+.primary {
     background: #2563eb;
-
     color: white;
-
     min-width: 180px;
-
 }
 
-
-.primary-btn:hover {
-
+.primary:hover {
     background: #1d4ed8;
-
-    transform: translateY(-1px);
-
 }
 
-
-.secondary-btn {
-
+.secondary {
     background: white;
-
     color: #475569;
-
     border: 1px solid #dce2ea;
-
 }
 
 
-.secondary-btn:hover {
-
-    background: #f8fafc;
-
-}
-
-
-/* =========================
-   LOADING
-   ========================= */
+/* LOADING */
 
 .loading {
-
     display: none;
-
     text-align: center;
-
-    margin: 20px 0;
-
+    margin: 20px;
     color: #64748b;
-
 }
-
 
 .spinner {
-
     display: inline-block;
-
     width: 20px;
-
     height: 20px;
-
     border: 3px solid #dbe5ff;
-
     border-top: 3px solid #2563eb;
-
     border-radius: 50%;
-
     animation: spin 0.8s linear infinite;
-
     vertical-align: middle;
-
     margin-right: 8px;
-
 }
 
-
 @keyframes spin {
-
     to {
         transform: rotate(360deg);
     }
-
 }
 
 
-/* =========================
-   RESULTS
-   ========================= */
+/* RESULTS */
 
 .results {
-
     display: none;
-
 }
-
 
 .results-title {
-
     font-size: 24px;
-
     margin-bottom: 20px;
-
 }
-
 
 .score-card {
-
-    background: white;
-
-    border: 1px solid #e5e9f0;
-
-    border-radius: 16px;
-
     padding: 25px;
-
     margin-bottom: 20px;
-
     display: flex;
-
     align-items: center;
-
     gap: 25px;
-
 }
-
 
 .score-circle {
-
     width: 95px;
-
     height: 95px;
-
     border-radius: 50%;
-
     border: 8px solid #2563eb;
-
     display: flex;
-
     align-items: center;
-
     justify-content: center;
-
     font-size: 24px;
-
-    font-weight: 800;
-
+    font-weight: bold;
     color: #2563eb;
-
     flex-shrink: 0;
-
 }
-
 
 .score-info h3 {
-
     margin-bottom: 5px;
-
 }
-
 
 .score-info p {
-
     color: #64748b;
-
 }
 
 
-/* =========================
-   RESULT GRID
-   ========================= */
+/* RESULT GRID */
 
 .result-grid {
-
     display: grid;
-
     grid-template-columns: 1fr 1fr;
-
     gap: 20px;
-
     margin-bottom: 20px;
-
 }
-
 
 .result-card {
-
-    background: white;
-
-    border: 1px solid #e5e9f0;
-
-    border-radius: 16px;
-
     padding: 24px;
-
 }
-
 
 .result-card h3 {
-
     font-size: 17px;
-
     margin-bottom: 15px;
-
 }
-
 
 .result-card ul {
-
     padding-left: 20px;
-
 }
-
 
 .result-card li {
-
     margin-bottom: 8px;
-
     color: #475569;
-
 }
 
 
-.missing li {
+/* KEYWORDS */
 
-    color: #b45309;
-
+.keyword-card {
+    padding: 24px;
+    margin-bottom: 20px;
 }
-
-
-.recommendations li {
-
-    color: #334155;
-
-}
-
-
-/* =========================
-   KEYWORDS
-   ========================= */
 
 .keyword-list {
-
     display: flex;
-
     flex-wrap: wrap;
-
     gap: 8px;
-
 }
-
 
 .keyword {
-
     background: #eef4ff;
-
     color: #2563eb;
-
     padding: 6px 11px;
-
     border-radius: 20px;
-
     font-size: 13px;
-
-    font-weight: 600;
-
+    font-weight: bold;
 }
 
 
-/* =========================
-   FULL REPORT
-   ========================= */
+/* FULL REPORT */
 
 .full-report {
-
-    background: white;
-
-    border: 1px solid #e5e9f0;
-
-    border-radius: 16px;
-
     padding: 25px;
-
 }
-
 
 .full-report h3 {
-
     margin-bottom: 15px;
-
 }
-
 
 .report-text {
-
     white-space: pre-wrap;
-
     color: #475569;
-
     font-size: 14px;
-
     line-height: 1.8;
-
 }
 
 
-/* =========================
-   FOOTER
-   ========================= */
+/* FOOTER */
 
 .footer {
-
     text-align: center;
-
     padding: 30px;
-
     color: #94a3b8;
-
     font-size: 13px;
-
 }
 
 
-/* =========================
-   RESPONSIVE
-   ========================= */
+/* MOBILE */
 
-@media(max-width: 800px) {
+@media (max-width: 800px) {
 
-    .input-grid {
-
-        grid-template-columns: 1fr;
-
-    }
-
+    .input-grid,
     .result-grid {
-
         grid-template-columns: 1fr;
-
     }
 
     .hero h1 {
-
         font-size: 36px;
-
     }
 
     .score-card {
-
         flex-direction: column;
-
         text-align: center;
-
     }
 
 }
@@ -865,16 +513,20 @@ button {
 
     <div class="logo">
 
-        <div class="logo-icon">AI</div>
+        <div class="logo-icon">
+            AI
+        </div>
 
-        Resume Analyzer <span>Pro</span>
+        Resume Analyzer
+        <span>Pro</span>
 
     </div>
 
-    <div class="nav-badge">AI Powered</div>
+    <div class="badge">
+        AI Powered
+    </div>
 
 </nav>
-
 
 
 <!-- HERO -->
@@ -895,13 +547,12 @@ button {
 </section>
 
 
-
 <!-- MAIN -->
 
 <main class="container">
 
 
-    <!-- INPUT SECTION -->
+    <!-- INPUTS -->
 
     <div class="input-grid">
 
@@ -922,28 +573,12 @@ button {
 
             </div>
 
-
             <textarea
                 id="resume"
-                placeholder="Paste your resume here...
-
-Example:
-
-Jitendhra Nayakudugaru
-B.Tech AI & ML
-
-Skills:
-Python, Machine Learning,
-Pandas, NumPy, Scikit-learn
-
-Projects:
-AI Resume Analyzer
-Indian Weather & Cinema AI Agent
-"
+                placeholder="Paste your resume here..."
             ></textarea>
 
         </div>
-
 
 
         <!-- JOB -->
@@ -962,28 +597,14 @@ Indian Weather & Cinema AI Agent
 
             </div>
 
-
             <textarea
                 id="job"
-                placeholder="Paste the job description here...
-
-Example:
-
-We are looking for an AI/ML Intern
-with knowledge of Python,
-Machine Learning, Pandas,
-NumPy and Scikit-learn.
-
-Knowledge of SQL,
-GitHub and Generative AI
-is preferred."
+                placeholder="Paste the job description here..."
             ></textarea>
 
         </div>
 
-
     </div>
-
 
 
     <!-- BUTTONS -->
@@ -991,22 +612,20 @@ is preferred."
     <div class="actions">
 
         <button
-            class="primary-btn"
+            class="primary"
             onclick="analyze()"
         >
             Analyze Resume
         </button>
 
-
         <button
-            class="secondary-btn"
+            class="secondary"
             onclick="clearAll()"
         >
             Clear
         </button>
 
     </div>
-
 
 
     <!-- LOADING -->
@@ -1021,7 +640,6 @@ is preferred."
         AI is analyzing your resume...
 
     </div>
-
 
 
     <!-- RESULTS -->
@@ -1047,7 +665,6 @@ is preferred."
                 --
             </div>
 
-
             <div class="score-info">
 
                 <h3>
@@ -1063,13 +680,10 @@ is preferred."
         </div>
 
 
-
-        <!-- RESULT GRID -->
+        <!-- RESULT CARDS -->
 
         <div class="result-grid">
 
-
-            <!-- MATCHED -->
 
             <div class="result-card">
 
@@ -1082,10 +696,7 @@ is preferred."
             </div>
 
 
-
-            <!-- MISSING -->
-
-            <div class="result-card missing">
+            <div class="result-card">
 
                 <h3>
                     ⚠ Missing Skills
@@ -1095,9 +706,6 @@ is preferred."
 
             </div>
 
-
-
-            <!-- EXPERIENCE -->
 
             <div class="result-card">
 
@@ -1110,10 +718,7 @@ is preferred."
             </div>
 
 
-
-            <!-- RECOMMENDATIONS -->
-
-            <div class="result-card recommendations">
+            <div class="result-card">
 
                 <h3>
                     AI Recommendations
@@ -1123,14 +728,12 @@ is preferred."
 
             </div>
 
-
         </div>
-
 
 
         <!-- ATS KEYWORDS -->
 
-        <div class="result-card">
+        <div class="result-card keyword-card">
 
             <h3>
                 ATS Keywords
@@ -1142,9 +745,6 @@ is preferred."
             ></div>
 
         </div>
-
-
-        <br>
 
 
         <!-- FULL REPORT -->
@@ -1162,12 +762,9 @@ is preferred."
 
         </div>
 
-
     </section>
 
-
 </main>
-
 
 
 <!-- FOOTER -->
@@ -1179,28 +776,23 @@ is preferred."
 </footer>
 
 
-
 <script>
 
 
 // =========================
-// ANALYZE FUNCTION
+// ANALYZE
 // =========================
 
 async function analyze() {
 
-
     const resume =
         document.getElementById("resume").value.trim();
-
 
     const job =
         document.getElementById("job").value.trim();
 
-
     const loading =
         document.getElementById("loading");
-
 
     const results =
         document.getElementById("results");
@@ -1213,7 +805,6 @@ async function analyze() {
         );
 
         return;
-
     }
 
 
@@ -1224,11 +815,9 @@ async function analyze() {
 
     try {
 
-
         const response = await fetch(
             "/analyze",
             {
-
                 method: "POST",
 
                 headers: {
@@ -1236,13 +825,9 @@ async function analyze() {
                 },
 
                 body: JSON.stringify({
-
                     resume: resume,
-
                     job_description: job
-
                 })
-
             }
         );
 
@@ -1250,15 +835,12 @@ async function analyze() {
         const data = await response.json();
 
 
-        const report = data.result || data.detail || "No result";
+        displayResults(
+            data.result || data.detail || "No result."
+        );
 
 
-        displayResults(report);
-
-
-    }
-
-    catch(error) {
+    } catch (error) {
 
         alert(
             "Something went wrong. Please try again."
@@ -1266,10 +848,7 @@ async function analyze() {
 
         console.error(error);
 
-    }
-
-
-    finally {
+    } finally {
 
         loading.style.display = "none";
 
@@ -1277,6 +856,185 @@ async function analyze() {
 
 }
 
+
+// =========================
+// SECTION PARSER
+// =========================
+
+function getSection(text, start, end) {
+
+    const upper =
+        text.toUpperCase();
+
+    const startIndex =
+        upper.indexOf(
+            start.toUpperCase()
+        );
+
+
+    if (startIndex === -1) {
+        return "";
+    }
+
+
+    let content =
+        text.substring(
+            startIndex + start.length
+        );
+
+
+    if (end) {
+
+        const endIndex =
+            content.toUpperCase().indexOf(
+                end.toUpperCase()
+            );
+
+
+        if (endIndex !== -1) {
+
+            content =
+                content.substring(
+                    0,
+                    endIndex
+                );
+        }
+    }
+
+
+    return content.trim();
+
+}
+
+
+// =========================
+// CLEAN TEXT
+// =========================
+
+function cleanText(text) {
+
+    return text
+        .replace(
+            /MATCH_PERCENTAGE:\\s*\\d+/gi,
+            ""
+        )
+        .replace(
+            /^[-*•]\\s*/gm,
+            ""
+        )
+        .trim();
+
+}
+
+
+// =========================
+// FILL LIST
+// =========================
+
+function fillList(id, text) {
+
+    const element =
+        document.getElementById(id);
+
+    element.innerHTML = "";
+
+
+    const lines =
+        text
+            .split("\\n")
+            .map(
+                line =>
+                    line
+                        .replace(
+                            /^[-*•]\\s*/,
+                            ""
+                        )
+                        .trim()
+            )
+            .filter(
+                line =>
+                    line.length > 0
+            );
+
+
+    if (lines.length === 0) {
+
+        const li =
+            document.createElement("li");
+
+        li.textContent =
+            "No specific items identified.";
+
+        element.appendChild(li);
+
+        return;
+    }
+
+
+    lines.forEach(
+        line => {
+
+            const li =
+                document.createElement("li");
+
+            li.textContent = line;
+
+            element.appendChild(li);
+
+        }
+    );
+
+}
+
+
+// =========================
+// KEYWORDS
+// =========================
+
+function fillKeywords(text) {
+
+    const container =
+        document.getElementById("keywords");
+
+    container.innerHTML = "";
+
+
+    const lines =
+        text
+            .split("\\n")
+            .map(
+                line =>
+                    line
+                        .replace(
+                            /^[-*•]\\s*/,
+                            ""
+                        )
+                        .trim()
+            )
+            .filter(
+                line =>
+                    line.length > 0
+            );
+
+
+    lines.forEach(
+        keyword => {
+
+            const span =
+                document.createElement("span");
+
+            span.className =
+                "keyword";
+
+            span.textContent =
+                keyword;
+
+            container.appendChild(span);
+
+        }
+    );
+
+}
 
 
 // =========================
@@ -1316,10 +1074,11 @@ function displayResults(report) {
 
     document.getElementById(
         "score"
-    ).textContent = percentage + "%";
+    ).textContent =
+        percentage + "%";
 
 
-    const overallSection =
+    const overall =
         getSection(
             report,
             "OVERALL MATCH:",
@@ -1330,8 +1089,7 @@ function displayResults(report) {
     document.getElementById(
         "summary"
     ).textContent =
-        cleanText(overallSection);
-
+        cleanText(overall);
 
 
     fillList(
@@ -1388,226 +1146,13 @@ function displayResults(report) {
     ).style.display = "block";
 
 
-    window.scrollTo({
-
-        top:
-            document.getElementById(
-                "results"
-            ).offsetTop - 30,
-
+    document.getElementById(
+        "results"
+    ).scrollIntoView({
         behavior: "smooth"
-
     });
 
 }
-
-
-
-// =========================
-// GET SECTION
-// =========================
-
-function getSection(
-    text,
-    start,
-    end
-) {
-
-
-    const startIndex =
-        text.toUpperCase().indexOf(
-            start.toUpperCase()
-        );
-
-
-    if (startIndex === -1) {
-
-        return "";
-
-    }
-
-
-    let content =
-        text.substring(
-            startIndex + start.length
-        );
-
-
-    if (end) {
-
-        const endIndex =
-            content.toUpperCase().indexOf(
-                end.toUpperCase()
-            );
-
-
-        if (endIndex !== -1) {
-
-            content =
-                content.substring(
-                    0,
-                    endIndex
-                );
-
-        }
-
-    }
-
-
-    return content.trim();
-
-}
-
-
-
-// =========================
-// CLEAN TEXT
-// =========================
-
-function cleanText(text) {
-
-
-    return text
-        .replace(
-            /MATCH_PERCENTAGE:\\s*\\d+/gi,
-            ""
-        )
-        .replace(
-            /^[-*]\\s*/gm,
-            ""
-        )
-        .trim();
-
-}
-
-
-
-// =========================
-// FILL LIST
-// =========================
-
-function fillList(
-    elementId,
-    text
-) {
-
-
-    const element =
-        document.getElementById(
-            elementId
-        );
-
-
-    element.innerHTML = "";
-
-
-    const lines =
-        text
-            .split("\\n")
-            .map(
-                line =>
-                    line
-                        .replace(
-                            /^[-*•]\\s*/,
-                            ""
-                        )
-                        .trim()
-            )
-            .filter(
-                line => line.length > 0
-            );
-
-
-    if (lines.length === 0) {
-
-        const li =
-            document.createElement("li");
-
-        li.textContent =
-            "No specific items identified.";
-
-        element.appendChild(li);
-
-        return;
-
-    }
-
-
-    lines.forEach(
-        line => {
-
-            const li =
-                document.createElement(
-                    "li"
-                );
-
-            li.textContent = line;
-
-            element.appendChild(li);
-
-        }
-    );
-
-}
-
-
-
-// =========================
-// KEYWORDS
-// =========================
-
-function fillKeywords(text) {
-
-
-    const container =
-        document.getElementById(
-            "keywords"
-        );
-
-
-    container.innerHTML = "";
-
-
-    const lines =
-        text
-            .split("\\n")
-            .map(
-                line =>
-                    line
-                        .replace(
-                            /^[-*•]\\s*/,
-                            ""
-                        )
-                        .trim()
-            )
-            .filter(
-                line => line.length > 0
-            );
-
-
-    lines.forEach(
-        keyword => {
-
-            const span =
-                document.createElement(
-                    "span"
-                );
-
-            span.className =
-                "keyword";
-
-            span.textContent =
-                keyword;
-
-            container.appendChild(
-                span
-            );
-
-        }
-    );
-
-}
-
 
 
 // =========================
@@ -1616,21 +1161,17 @@ function fillKeywords(text) {
 
 function clearAll() {
 
-
     document.getElementById(
         "resume"
     ).value = "";
-
 
     document.getElementById(
         "job"
     ).value = "";
 
-
     document.getElementById(
         "results"
     ).style.display = "none";
-
 
     document.getElementById(
         "score"
@@ -1638,14 +1179,12 @@ function clearAll() {
 
 }
 
-
 </script>
 
 
 </body>
 
 </html>
-
 """
 
 
@@ -1653,12 +1192,8 @@ function clearAll() {
 # HOME PAGE
 # =========================
 
-@app.get(
-    "/",
-    response_class=HTMLResponse
-)
+@app.get("/", response_class=HTMLResponse)
 def home():
-
     return HTML
 
 
@@ -1672,24 +1207,21 @@ def analyze(request: AnalyzeRequest):
     if not request.resume.strip():
 
         return {
-            "result":
-            "Please provide your resume."
+            "result": "Please provide your resume."
         }
 
 
     if not request.job_description.strip():
 
         return {
-            "result":
-            "Please provide the job description."
+            "result": "Please provide the job description."
         }
 
 
-    result =
-        analyze_resume(
-            request.resume,
-            request.job_description
-        )
+    result = analyze_resume(
+        request.resume,
+        request.job_description
+    )
 
 
     return {
@@ -1698,7 +1230,7 @@ def analyze(request: AnalyzeRequest):
 
 
 # =========================
-# RUN APPLICATION
+# START SERVER
 # =========================
 
 if __name__ == "__main__":
