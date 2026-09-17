@@ -1,25 +1,20 @@
 import os
 import uvicorn
-
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 from langchain_google_genai import ChatGoogleGenerativeAI
 
 
-# =========================================================
-# GEMINI API KEY
-# =========================================================
+# =========================
+# GEMINI API CONFIGURATION
+# =========================
 
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
 if not GEMINI_API_KEY:
     raise ValueError("GEMINI_API_KEY environment variable is not set.")
 
-
-# =========================================================
-# GEMINI MODEL
-# =========================================================
 
 llm = ChatGoogleGenerativeAI(
     model="gemma-4-31b-it",
@@ -28,146 +23,136 @@ llm = ChatGoogleGenerativeAI(
 )
 
 
-# =========================================================
-# FASTAPI APP
-# =========================================================
+# =========================
+# FASTAPI APPLICATION
+# =========================
 
 app = FastAPI(
-    title="AI Resume Analyzer Agent",
-    description="AI-powered resume and job description analyzer",
-    version="1.0.0"
+    title="AI Resume Analyzer Pro",
+    description="Professional AI-powered resume analysis application",
+    version="2.0.0"
 )
 
 
-# =========================================================
+# =========================
 # REQUEST MODEL
-# =========================================================
+# =========================
 
 class AnalyzeRequest(BaseModel):
     resume: str
     job_description: str
 
 
-# =========================================================
-# EXTRACT GEMINI RESPONSE
-# =========================================================
+# =========================
+# RESPONSE TEXT HANDLER
+# =========================
 
 def extract_response_text(response):
-
     content = getattr(response, "content", response)
 
-    # Normal string response
     if isinstance(content, str):
         return content
 
-    # Gemini sometimes returns a list of content blocks
     if isinstance(content, list):
-
-        result = []
+        parts = []
 
         for item in content:
 
-            if isinstance(item, dict):
-
-                if "text" in item:
-                    result.append(str(item["text"]))
-
-                elif "content" in item:
-                    result.append(str(item["content"]))
+            if isinstance(item, dict) and item.get("text"):
+                parts.append(str(item["text"]))
 
             elif isinstance(item, str):
-                result.append(item)
+                parts.append(item)
 
             else:
-                # Try to get text attribute
                 text = getattr(item, "text", None)
 
                 if text:
-                    result.append(str(text))
+                    parts.append(str(text))
 
-        if result:
-            return "\n".join(result)
+        if parts:
+            return "\n".join(parts)
 
     return str(content)
 
 
-# =========================================================
-# RESUME ANALYZER
-# =========================================================
+# =========================
+# AI RESUME ANALYZER
+# =========================
 
 def analyze_resume(resume, job_description):
 
     prompt = f"""
-You are an AI Resume Analyzer Agent.
+You are a professional AI Resume Analyzer.
 
-Your task is to compare the candidate's resume with the target job description.
+Compare the supplied resume with the supplied job description.
 
-Analyze ONLY the information provided.
+IMPORTANT RULES:
 
-Do NOT invent skills, experience, education, certificates, or achievements.
+1. Use ONLY information provided in the resume and job description.
+2. Never invent experience, qualifications, projects, certificates,
+   skills, education or achievements.
+3. Be factual and professional.
+4. Give practical suggestions that the candidate can actually use.
+5. Do not exaggerate the candidate's qualifications.
 
-Return the answer in a clear professional format.
+Return the analysis using EXACTLY these sections:
 
-Use exactly these sections:
+OVERALL MATCH:
+First line must be:
+MATCH_PERCENTAGE: <number>
 
-1. OVERALL MATCH
+Then provide a short factual explanation of the match.
 
-Give a short explanation of how well the resume matches the job.
+MATCHED SKILLS:
+Use "- " bullet points.
 
-2. MATCHED SKILLS
+MISSING SKILLS:
+Use "- " bullet points.
 
-List the skills present in both the resume and job description.
+RELEVANT EXPERIENCE:
+Use "- " bullet points.
 
-3. MISSING SKILLS
+AI RECOMMENDATIONS:
+Use "- " bullet points.
 
-List important skills mentioned in the job description that are not clearly present in the resume.
+ATS KEYWORDS:
+Use "- " bullet points.
 
-4. RELEVANT PROJECTS AND EXPERIENCE
+Keep the report concise, professional and easy to understand.
 
-Explain which projects or experience from the resume are relevant to the job.
 
-5. RESUME IMPROVEMENT SUGGESTIONS
-
-Give practical suggestions to improve the resume for this job.
-
-6. SUGGESTED KEYWORDS
-
-List keywords from the job description that could naturally be included in the resume if they are genuinely applicable.
-
---------------------------------------------------
-
-RESUME:
+========================
+RESUME
+========================
 
 {resume}
 
---------------------------------------------------
 
-JOB DESCRIPTION:
+========================
+JOB DESCRIPTION
+========================
 
 {job_description}
-
---------------------------------------------------
 """
 
     try:
-
         response = llm.invoke(prompt)
-
         return extract_response_text(response)
 
     except Exception as e:
-
         return f"AI analysis failed: {str(e)}"
 
 
-# =========================================================
-# HTML FRONTEND
-# =========================================================
+# =========================
+# PROFESSIONAL FRONTEND
+# =========================
 
 HTML = """
+
 <!DOCTYPE html>
 
-<html>
+<html lang="en">
 
 <head>
 
@@ -175,149 +160,694 @@ HTML = """
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-<title>AI Resume Analyzer Agent</title>
+<title>AI Resume Analyzer Pro</title>
+
 
 <style>
 
 * {
     box-sizing: border-box;
+    margin: 0;
+    padding: 0;
 }
+
 
 body {
 
-    font-family: Arial, sans-serif;
+    font-family:
+        Inter,
+        -apple-system,
+        BlinkMacSystemFont,
+        "Segoe UI",
+        Roboto,
+        Arial,
+        sans-serif;
 
-    background: #f4f6f8;
+    background: #f5f7fb;
 
-    margin: 0;
+    color: #172033;
 
-    padding: 30px;
-
+    line-height: 1.6;
 }
 
-.container {
 
-    max-width: 1000px;
+/* =========================
+   NAVBAR
+   ========================= */
 
-    margin: auto;
+.navbar {
+
+    height: 70px;
 
     background: white;
 
-    padding: 30px;
+    border-bottom: 1px solid #e7eaf0;
 
-    border-radius: 12px;
+    display: flex;
 
-    box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+    align-items: center;
 
-}
+    justify-content: space-between;
 
-h1 {
-
-    text-align: center;
-
-    margin-bottom: 10px;
+    padding: 0 6%;
 
 }
 
-.subtitle {
 
-    text-align: center;
+.logo {
 
-    color: #666;
+    display: flex;
 
-    margin-bottom: 30px;
+    align-items: center;
+
+    gap: 10px;
+
+    font-size: 20px;
+
+    font-weight: 700;
 
 }
 
-label {
 
-    display: block;
+.logo-icon {
+
+    width: 38px;
+
+    height: 38px;
+
+    border-radius: 10px;
+
+    display: flex;
+
+    align-items: center;
+
+    justify-content: center;
+
+    background: #111827;
+
+    color: white;
 
     font-weight: bold;
 
-    margin-top: 20px;
+}
 
-    margin-bottom: 8px;
+
+.logo span {
+
+    color: #2563eb;
 
 }
+
+
+.nav-badge {
+
+    background: #eef4ff;
+
+    color: #2563eb;
+
+    padding: 6px 12px;
+
+    border-radius: 20px;
+
+    font-size: 13px;
+
+    font-weight: 600;
+
+}
+
+
+/* =========================
+   HERO
+   ========================= */
+
+.hero {
+
+    max-width: 1100px;
+
+    margin: auto;
+
+    padding: 65px 25px 35px;
+
+    text-align: center;
+
+}
+
+
+.hero h1 {
+
+    font-size: 46px;
+
+    line-height: 1.15;
+
+    margin-bottom: 18px;
+
+    letter-spacing: -1.5px;
+
+}
+
+
+.hero h1 span {
+
+    color: #2563eb;
+
+}
+
+
+.hero p {
+
+    max-width: 700px;
+
+    margin: auto;
+
+    color: #64748b;
+
+    font-size: 17px;
+
+}
+
+
+/* =========================
+   MAIN CONTAINER
+   ========================= */
+
+.container {
+
+    max-width: 1100px;
+
+    margin: auto;
+
+    padding: 10px 25px 60px;
+
+}
+
+
+/* =========================
+   INPUT GRID
+   ========================= */
+
+.input-grid {
+
+    display: grid;
+
+    grid-template-columns: 1fr 1fr;
+
+    gap: 22px;
+
+}
+
+
+/* =========================
+   CARDS
+   ========================= */
+
+.card {
+
+    background: white;
+
+    border: 1px solid #e5e9f0;
+
+    border-radius: 16px;
+
+    padding: 24px;
+
+    box-shadow: 0 8px 25px rgba(15, 23, 42, 0.04);
+
+}
+
+
+.card-header {
+
+    display: flex;
+
+    align-items: center;
+
+    justify-content: space-between;
+
+    margin-bottom: 15px;
+
+}
+
+
+.card-title {
+
+    font-size: 17px;
+
+    font-weight: 700;
+
+}
+
+
+.card-subtitle {
+
+    font-size: 13px;
+
+    color: #94a3b8;
+
+}
+
+
+/* =========================
+   TEXTAREA
+   ========================= */
 
 textarea {
 
     width: 100%;
 
-    min-height: 220px;
-
-    padding: 14px;
-
-    border: 1px solid #ccc;
-
-    border-radius: 8px;
-
-    font-size: 15px;
+    height: 310px;
 
     resize: vertical;
 
+    border: 1px solid #dce2ea;
+
+    border-radius: 12px;
+
+    padding: 15px;
+
+    font-family: inherit;
+
+    font-size: 14px;
+
+    outline: none;
+
+    color: #334155;
+
+    background: #fafbfc;
+
+    transition: 0.2s;
+
 }
+
+
+textarea:focus {
+
+    border-color: #2563eb;
+
+    background: white;
+
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.08);
+
+}
+
+
+textarea::placeholder {
+
+    color: #a1aab8;
+
+}
+
+
+/* =========================
+   BUTTONS
+   ========================= */
+
+.actions {
+
+    display: flex;
+
+    justify-content: center;
+
+    gap: 12px;
+
+    margin: 25px 0 35px;
+
+}
+
 
 button {
 
-    display: block;
-
-    margin: 25px auto;
-
-    padding: 14px 30px;
-
     border: none;
 
-    border-radius: 8px;
+    border-radius: 10px;
 
-    background: #222;
+    padding: 13px 25px;
 
-    color: white;
+    font-size: 15px;
 
-    font-size: 16px;
+    font-weight: 600;
 
     cursor: pointer;
 
-}
-
-button:hover {
-
-    background: #444;
+    transition: 0.2s;
 
 }
 
-button:disabled {
 
-    background: #999;
+.primary-btn {
 
-    cursor: not-allowed;
+    background: #2563eb;
+
+    color: white;
+
+    min-width: 180px;
 
 }
 
-#output {
 
-    margin-top: 25px;
+.primary-btn:hover {
 
-    padding: 20px;
+    background: #1d4ed8;
 
-    background: #f8f8f8;
+    transform: translateY(-1px);
 
-    border: 1px solid #ddd;
+}
 
-    border-radius: 8px;
+
+.secondary-btn {
+
+    background: white;
+
+    color: #475569;
+
+    border: 1px solid #dce2ea;
+
+}
+
+
+.secondary-btn:hover {
+
+    background: #f8fafc;
+
+}
+
+
+/* =========================
+   LOADING
+   ========================= */
+
+.loading {
+
+    display: none;
+
+    text-align: center;
+
+    margin: 20px 0;
+
+    color: #64748b;
+
+}
+
+
+.spinner {
+
+    display: inline-block;
+
+    width: 20px;
+
+    height: 20px;
+
+    border: 3px solid #dbe5ff;
+
+    border-top: 3px solid #2563eb;
+
+    border-radius: 50%;
+
+    animation: spin 0.8s linear infinite;
+
+    vertical-align: middle;
+
+    margin-right: 8px;
+
+}
+
+
+@keyframes spin {
+
+    to {
+        transform: rotate(360deg);
+    }
+
+}
+
+
+/* =========================
+   RESULTS
+   ========================= */
+
+.results {
+
+    display: none;
+
+}
+
+
+.results-title {
+
+    font-size: 24px;
+
+    margin-bottom: 20px;
+
+}
+
+
+.score-card {
+
+    background: white;
+
+    border: 1px solid #e5e9f0;
+
+    border-radius: 16px;
+
+    padding: 25px;
+
+    margin-bottom: 20px;
+
+    display: flex;
+
+    align-items: center;
+
+    gap: 25px;
+
+}
+
+
+.score-circle {
+
+    width: 95px;
+
+    height: 95px;
+
+    border-radius: 50%;
+
+    border: 8px solid #2563eb;
+
+    display: flex;
+
+    align-items: center;
+
+    justify-content: center;
+
+    font-size: 24px;
+
+    font-weight: 800;
+
+    color: #2563eb;
+
+    flex-shrink: 0;
+
+}
+
+
+.score-info h3 {
+
+    margin-bottom: 5px;
+
+}
+
+
+.score-info p {
+
+    color: #64748b;
+
+}
+
+
+/* =========================
+   RESULT GRID
+   ========================= */
+
+.result-grid {
+
+    display: grid;
+
+    grid-template-columns: 1fr 1fr;
+
+    gap: 20px;
+
+    margin-bottom: 20px;
+
+}
+
+
+.result-card {
+
+    background: white;
+
+    border: 1px solid #e5e9f0;
+
+    border-radius: 16px;
+
+    padding: 24px;
+
+}
+
+
+.result-card h3 {
+
+    font-size: 17px;
+
+    margin-bottom: 15px;
+
+}
+
+
+.result-card ul {
+
+    padding-left: 20px;
+
+}
+
+
+.result-card li {
+
+    margin-bottom: 8px;
+
+    color: #475569;
+
+}
+
+
+.missing li {
+
+    color: #b45309;
+
+}
+
+
+.recommendations li {
+
+    color: #334155;
+
+}
+
+
+/* =========================
+   KEYWORDS
+   ========================= */
+
+.keyword-list {
+
+    display: flex;
+
+    flex-wrap: wrap;
+
+    gap: 8px;
+
+}
+
+
+.keyword {
+
+    background: #eef4ff;
+
+    color: #2563eb;
+
+    padding: 6px 11px;
+
+    border-radius: 20px;
+
+    font-size: 13px;
+
+    font-weight: 600;
+
+}
+
+
+/* =========================
+   FULL REPORT
+   ========================= */
+
+.full-report {
+
+    background: white;
+
+    border: 1px solid #e5e9f0;
+
+    border-radius: 16px;
+
+    padding: 25px;
+
+}
+
+
+.full-report h3 {
+
+    margin-bottom: 15px;
+
+}
+
+
+.report-text {
 
     white-space: pre-wrap;
 
-    line-height: 1.6;
+    color: #475569;
 
-    min-height: 100px;
+    font-size: 14px;
+
+    line-height: 1.8;
 
 }
 
-.error {
 
-    color: #b00020;
+/* =========================
+   FOOTER
+   ========================= */
+
+.footer {
+
+    text-align: center;
+
+    padding: 30px;
+
+    color: #94a3b8;
+
+    font-size: 13px;
+
+}
+
+
+/* =========================
+   RESPONSIVE
+   ========================= */
+
+@media(max-width: 800px) {
+
+    .input-grid {
+
+        grid-template-columns: 1fr;
+
+    }
+
+    .result-grid {
+
+        grid-template-columns: 1fr;
+
+    }
+
+    .hero h1 {
+
+        font-size: 36px;
+
+    }
+
+    .score-card {
+
+        flex-direction: column;
+
+        text-align: center;
+
+    }
 
 }
 
@@ -329,156 +859,782 @@ button:disabled {
 <body>
 
 
-<div class="container">
+<!-- NAVBAR -->
 
-<h1>AI Resume Analyzer Agent</h1>
+<nav class="navbar">
 
-<p class="subtitle">
+    <div class="logo">
 
-Compare your resume with a target job description using AI.
+        <div class="logo-icon">AI</div>
 
-</p>
+        Resume Analyzer <span>Pro</span>
 
+    </div>
 
-<label>Resume</label>
+    <div class="nav-badge">AI Powered</div>
 
-<textarea
-
-id="resume"
-
-placeholder="Paste your resume here..."
-
-></textarea>
+</nav>
 
 
-<label>Job Description</label>
 
-<textarea
+<!-- HERO -->
 
-id="job"
+<section class="hero">
 
-placeholder="Paste the target job description here..."
+    <h1>
+        Make your resume
+        <span>job-ready.</span>
+    </h1>
 
-></textarea>
+    <p>
+        Compare your resume with a target job description,
+        discover missing skills, improve your content and
+        identify important ATS keywords using AI.
+    </p>
 
-
-<button id="analyzeButton" onclick="analyzeResume()">
-
-Analyze Resume
-
-</button>
-
-
-<div id="output">
-
-Analysis will appear here.
-
-</div>
+</section>
 
 
-</div>
+
+<!-- MAIN -->
+
+<main class="container">
+
+
+    <!-- INPUT SECTION -->
+
+    <div class="input-grid">
+
+
+        <!-- RESUME -->
+
+        <div class="card">
+
+            <div class="card-header">
+
+                <div class="card-title">
+                    Your Resume
+                </div>
+
+                <div class="card-subtitle">
+                    Paste resume text
+                </div>
+
+            </div>
+
+
+            <textarea
+                id="resume"
+                placeholder="Paste your resume here...
+
+Example:
+
+Jitendhra Nayakudugaru
+B.Tech AI & ML
+
+Skills:
+Python, Machine Learning,
+Pandas, NumPy, Scikit-learn
+
+Projects:
+AI Resume Analyzer
+Indian Weather & Cinema AI Agent
+"
+            ></textarea>
+
+        </div>
+
+
+
+        <!-- JOB -->
+
+        <div class="card">
+
+            <div class="card-header">
+
+                <div class="card-title">
+                    Target Job
+                </div>
+
+                <div class="card-subtitle">
+                    Paste job description
+                </div>
+
+            </div>
+
+
+            <textarea
+                id="job"
+                placeholder="Paste the job description here...
+
+Example:
+
+We are looking for an AI/ML Intern
+with knowledge of Python,
+Machine Learning, Pandas,
+NumPy and Scikit-learn.
+
+Knowledge of SQL,
+GitHub and Generative AI
+is preferred."
+            ></textarea>
+
+        </div>
+
+
+    </div>
+
+
+
+    <!-- BUTTONS -->
+
+    <div class="actions">
+
+        <button
+            class="primary-btn"
+            onclick="analyze()"
+        >
+            Analyze Resume
+        </button>
+
+
+        <button
+            class="secondary-btn"
+            onclick="clearAll()"
+        >
+            Clear
+        </button>
+
+    </div>
+
+
+
+    <!-- LOADING -->
+
+    <div
+        class="loading"
+        id="loading"
+    >
+
+        <span class="spinner"></span>
+
+        AI is analyzing your resume...
+
+    </div>
+
+
+
+    <!-- RESULTS -->
+
+    <section
+        class="results"
+        id="results"
+    >
+
+        <h2 class="results-title">
+            Analysis Results
+        </h2>
+
+
+        <!-- SCORE -->
+
+        <div class="score-card">
+
+            <div
+                class="score-circle"
+                id="score"
+            >
+                --
+            </div>
+
+
+            <div class="score-info">
+
+                <h3>
+                    Overall Resume Match
+                </h3>
+
+                <p id="summary">
+                    Analysis completed.
+                </p>
+
+            </div>
+
+        </div>
+
+
+
+        <!-- RESULT GRID -->
+
+        <div class="result-grid">
+
+
+            <!-- MATCHED -->
+
+            <div class="result-card">
+
+                <h3>
+                    ✓ Matched Skills
+                </h3>
+
+                <ul id="matched"></ul>
+
+            </div>
+
+
+
+            <!-- MISSING -->
+
+            <div class="result-card missing">
+
+                <h3>
+                    ⚠ Missing Skills
+                </h3>
+
+                <ul id="missing"></ul>
+
+            </div>
+
+
+
+            <!-- EXPERIENCE -->
+
+            <div class="result-card">
+
+                <h3>
+                    Relevant Experience
+                </h3>
+
+                <ul id="experience"></ul>
+
+            </div>
+
+
+
+            <!-- RECOMMENDATIONS -->
+
+            <div class="result-card recommendations">
+
+                <h3>
+                    AI Recommendations
+                </h3>
+
+                <ul id="recommendations"></ul>
+
+            </div>
+
+
+        </div>
+
+
+
+        <!-- ATS KEYWORDS -->
+
+        <div class="result-card">
+
+            <h3>
+                ATS Keywords
+            </h3>
+
+            <div
+                class="keyword-list"
+                id="keywords"
+            ></div>
+
+        </div>
+
+
+        <br>
+
+
+        <!-- FULL REPORT -->
+
+        <div class="full-report">
+
+            <h3>
+                Complete AI Report
+            </h3>
+
+            <div
+                class="report-text"
+                id="fullReport"
+            ></div>
+
+        </div>
+
+
+    </section>
+
+
+</main>
+
+
+
+<!-- FOOTER -->
+
+<footer class="footer">
+
+    AI Resume Analyzer Pro · Built with Python, FastAPI and Gemini
+
+</footer>
+
 
 
 <script>
 
 
-async function analyzeResume() {
+// =========================
+// ANALYZE FUNCTION
+// =========================
+
+async function analyze() {
+
 
     const resume =
         document.getElementById("resume").value.trim();
 
+
     const job =
         document.getElementById("job").value.trim();
 
-    const output =
-        document.getElementById("output");
 
-    const button =
-        document.getElementById("analyzeButton");
+    const loading =
+        document.getElementById("loading");
+
+
+    const results =
+        document.getElementById("results");
 
 
     if (!resume || !job) {
 
-        output.innerHTML =
-            '<span class="error">Please provide both resume and job description.</span>';
+        alert(
+            "Please provide both your resume and the job description."
+        );
 
         return;
 
     }
 
 
-    button.disabled = true;
+    loading.style.display = "block";
 
-    button.textContent = "Analyzing...";
-
-    output.textContent =
-        "AI is analyzing your resume. Please wait...";
+    results.style.display = "none";
 
 
     try {
 
-        const response = await fetch("/analyze", {
 
-            method: "POST",
+        const response = await fetch(
+            "/analyze",
+            {
 
-            headers: {
+                method: "POST",
 
-                "Content-Type": "application/json"
+                headers: {
+                    "Content-Type": "application/json"
+                },
 
-            },
+                body: JSON.stringify({
 
-            body: JSON.stringify({
+                    resume: resume,
 
-                resume: resume,
+                    job_description: job
 
-                job_description: job
+                })
 
-            })
-
-        });
+            }
+        );
 
 
         const data = await response.json();
 
 
-        if (!response.ok) {
+        const report = data.result || data.detail || "No result";
 
-            throw new Error(
-                data.detail || "Server error"
+
+        displayResults(report);
+
+
+    }
+
+    catch(error) {
+
+        alert(
+            "Something went wrong. Please try again."
+        );
+
+        console.error(error);
+
+    }
+
+
+    finally {
+
+        loading.style.display = "none";
+
+    }
+
+}
+
+
+
+// =========================
+// DISPLAY RESULTS
+// =========================
+
+function displayResults(report) {
+
+
+    document.getElementById(
+        "fullReport"
+    ).textContent = report;
+
+
+    const match =
+        report.match(
+            /MATCH_PERCENTAGE:\\s*(\\d+)/i
+        );
+
+
+    let percentage = 0;
+
+
+    if (match) {
+
+        percentage =
+            Math.min(
+                100,
+                Math.max(
+                    0,
+                    parseInt(match[1])
+                )
+            );
+
+    }
+
+
+    document.getElementById(
+        "score"
+    ).textContent = percentage + "%";
+
+
+    const overallSection =
+        getSection(
+            report,
+            "OVERALL MATCH:",
+            "MATCHED SKILLS:"
+        );
+
+
+    document.getElementById(
+        "summary"
+    ).textContent =
+        cleanText(overallSection);
+
+
+
+    fillList(
+        "matched",
+        getSection(
+            report,
+            "MATCHED SKILLS:",
+            "MISSING SKILLS:"
+        )
+    );
+
+
+    fillList(
+        "missing",
+        getSection(
+            report,
+            "MISSING SKILLS:",
+            "RELEVANT EXPERIENCE:"
+        )
+    );
+
+
+    fillList(
+        "experience",
+        getSection(
+            report,
+            "RELEVANT EXPERIENCE:",
+            "AI RECOMMENDATIONS:"
+        )
+    );
+
+
+    fillList(
+        "recommendations",
+        getSection(
+            report,
+            "AI RECOMMENDATIONS:",
+            "ATS KEYWORDS:"
+        )
+    );
+
+
+    fillKeywords(
+        getSection(
+            report,
+            "ATS KEYWORDS:",
+            null
+        )
+    );
+
+
+    document.getElementById(
+        "results"
+    ).style.display = "block";
+
+
+    window.scrollTo({
+
+        top:
+            document.getElementById(
+                "results"
+            ).offsetTop - 30,
+
+        behavior: "smooth"
+
+    });
+
+}
+
+
+
+// =========================
+// GET SECTION
+// =========================
+
+function getSection(
+    text,
+    start,
+    end
+) {
+
+
+    const startIndex =
+        text.toUpperCase().indexOf(
+            start.toUpperCase()
+        );
+
+
+    if (startIndex === -1) {
+
+        return "";
+
+    }
+
+
+    let content =
+        text.substring(
+            startIndex + start.length
+        );
+
+
+    if (end) {
+
+        const endIndex =
+            content.toUpperCase().indexOf(
+                end.toUpperCase()
+            );
+
+
+        if (endIndex !== -1) {
+
+            content =
+                content.substring(
+                    0,
+                    endIndex
+                );
+
+        }
+
+    }
+
+
+    return content.trim();
+
+}
+
+
+
+// =========================
+// CLEAN TEXT
+// =========================
+
+function cleanText(text) {
+
+
+    return text
+        .replace(
+            /MATCH_PERCENTAGE:\\s*\\d+/gi,
+            ""
+        )
+        .replace(
+            /^[-*]\\s*/gm,
+            ""
+        )
+        .trim();
+
+}
+
+
+
+// =========================
+// FILL LIST
+// =========================
+
+function fillList(
+    elementId,
+    text
+) {
+
+
+    const element =
+        document.getElementById(
+            elementId
+        );
+
+
+    element.innerHTML = "";
+
+
+    const lines =
+        text
+            .split("\\n")
+            .map(
+                line =>
+                    line
+                        .replace(
+                            /^[-*•]\\s*/,
+                            ""
+                        )
+                        .trim()
+            )
+            .filter(
+                line => line.length > 0
+            );
+
+
+    if (lines.length === 0) {
+
+        const li =
+            document.createElement("li");
+
+        li.textContent =
+            "No specific items identified.";
+
+        element.appendChild(li);
+
+        return;
+
+    }
+
+
+    lines.forEach(
+        line => {
+
+            const li =
+                document.createElement(
+                    "li"
+                );
+
+            li.textContent = line;
+
+            element.appendChild(li);
+
+        }
+    );
+
+}
+
+
+
+// =========================
+// KEYWORDS
+// =========================
+
+function fillKeywords(text) {
+
+
+    const container =
+        document.getElementById(
+            "keywords"
+        );
+
+
+    container.innerHTML = "";
+
+
+    const lines =
+        text
+            .split("\\n")
+            .map(
+                line =>
+                    line
+                        .replace(
+                            /^[-*•]\\s*/,
+                            ""
+                        )
+                        .trim()
+            )
+            .filter(
+                line => line.length > 0
+            );
+
+
+    lines.forEach(
+        keyword => {
+
+            const span =
+                document.createElement(
+                    "span"
+                );
+
+            span.className =
+                "keyword";
+
+            span.textContent =
+                keyword;
+
+            container.appendChild(
+                span
             );
 
         }
+    );
+
+}
 
 
-        if (typeof data.result === "string") {
 
-            output.textContent = data.result;
+// =========================
+// CLEAR
+// =========================
 
-        }
-
-        else {
-
-            output.textContent =
-                JSON.stringify(data.result, null, 2);
-
-        }
+function clearAll() {
 
 
-    }
-
-    catch (error) {
-
-        output.innerHTML =
-            '<span class="error">Error: ' +
-            error.message +
-            '</span>';
-
-    }
+    document.getElementById(
+        "resume"
+    ).value = "";
 
 
-    button.disabled = false;
+    document.getElementById(
+        "job"
+    ).value = "";
 
-    button.textContent = "Analyze Resume";
+
+    document.getElementById(
+        "results"
+    ).style.display = "none";
+
+
+    document.getElementById(
+        "score"
+    ).textContent = "--";
 
 }
 
@@ -489,22 +1645,26 @@ async function analyzeResume() {
 </body>
 
 </html>
+
 """
 
 
-# =========================================================
+# =========================
 # HOME PAGE
-# =========================================================
+# =========================
 
-@app.get("/", response_class=HTMLResponse)
+@app.get(
+    "/",
+    response_class=HTMLResponse
+)
 def home():
 
     return HTML
 
 
-# =========================================================
+# =========================
 # ANALYZE API
-# =========================================================
+# =========================
 
 @app.post("/analyze")
 def analyze(request: AnalyzeRequest):
@@ -512,21 +1672,24 @@ def analyze(request: AnalyzeRequest):
     if not request.resume.strip():
 
         return {
-            "result": "Please provide your resume."
+            "result":
+            "Please provide your resume."
         }
 
 
     if not request.job_description.strip():
 
         return {
-            "result": "Please provide the job description."
+            "result":
+            "Please provide the job description."
         }
 
 
-    result = analyze_resume(
-        request.resume,
-        request.job_description
-    )
+    result =
+        analyze_resume(
+            request.resume,
+            request.job_description
+        )
 
 
     return {
@@ -534,14 +1697,17 @@ def analyze(request: AnalyzeRequest):
     }
 
 
-# =========================================================
-# RUN SERVER
-# =========================================================
+# =========================
+# RUN APPLICATION
+# =========================
 
 if __name__ == "__main__":
 
     port = int(
-        os.environ.get("PORT", 8000)
+        os.environ.get(
+            "PORT",
+            8000
+        )
     )
 
     uvicorn.run(
