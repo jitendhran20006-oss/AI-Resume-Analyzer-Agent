@@ -6,14 +6,15 @@ from pydantic import BaseModel
 from langchain_google_genai import ChatGoogleGenerativeAI
 
 
-# =========================
+# ============================================================
 # GEMINI CONFIGURATION
-# =========================
+# ============================================================
 
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
 if not GEMINI_API_KEY:
     raise ValueError("GEMINI_API_KEY environment variable is not set.")
+
 
 llm = ChatGoogleGenerativeAI(
     model="gemma-4-31b-it",
@@ -22,106 +23,450 @@ llm = ChatGoogleGenerativeAI(
 )
 
 
-# =========================
-# FASTAPI
-# =========================
+# ============================================================
+# FASTAPI APPLICATION
+# ============================================================
 
 app = FastAPI(
-    title="AI Resume Analyzer Pro",
-    version="2.0.0"
+    title="AI Career Agent",
+    description="AI-powered career assistant",
+    version="1.0.0"
 )
 
 
-class AnalyzeRequest(BaseModel):
-    resume: str
-    job_description: str
+# ============================================================
+# REQUEST MODEL
+# ============================================================
+
+class CareerRequest(BaseModel):
+    resume: str = ""
+    job_description: str = ""
+    text: str = ""
+    tool: str
 
 
-# =========================
-# AI RESPONSE
-# =========================
+# ============================================================
+# AI FUNCTION
+# ============================================================
 
-def get_response_text(response):
-    content = getattr(response, "content", response)
+def ask_ai(prompt: str) -> str:
 
-    if isinstance(content, str):
-        return content
+    try:
 
-    if isinstance(content, list):
-        result = []
+        response = llm.invoke(prompt)
 
-        for item in content:
-            if isinstance(item, dict):
-                if item.get("text"):
-                    result.append(str(item["text"]))
-            elif isinstance(item, str):
-                result.append(item)
-            else:
-                text = getattr(item, "text", None)
-                if text:
-                    result.append(str(text))
+        content = getattr(response, "content", response)
 
-        if result:
-            return "\n".join(result)
+        if isinstance(content, str):
+            return content
 
-    return str(content)
+        if isinstance(content, list):
+
+            parts = []
+
+            for item in content:
+
+                if isinstance(item, dict):
+
+                    if item.get("text"):
+                        parts.append(str(item["text"]))
+
+                elif isinstance(item, str):
+
+                    parts.append(item)
+
+                else:
+
+                    text = getattr(item, "text", None)
+
+                    if text:
+                        parts.append(str(text))
+
+            if parts:
+                return "\n".join(parts)
+
+        return str(content)
+
+    except Exception as e:
+
+        return "AI service error: " + str(e)
 
 
-def analyze_resume(resume, job_description):
+# ============================================================
+# CAREER AGENT
+# ============================================================
 
-    prompt = f"""
+def career_agent(request: CareerRequest) -> str:
+
+    resume = request.resume.strip()
+
+    job = request.job_description.strip()
+
+    text = request.text.strip()
+
+    tool = request.tool
+
+
+    # --------------------------------------------------------
+    # RESUME ANALYZER
+    # --------------------------------------------------------
+
+    if tool == "resume":
+
+        prompt = f"""
 You are a professional AI Resume Analyzer.
+
+Analyze the candidate's resume.
+
+Use ONLY the information provided.
+
+Do not invent qualifications, skills, projects,
+experience, certificates or achievements.
+
+Return:
+
+1. RESUME SUMMARY
+2. KEY STRENGTHS
+3. WEAK AREAS
+4. TECHNICAL SKILLS
+5. PROJECTS
+6. EDUCATION
+7. IMPROVEMENT SUGGESTIONS
+
+RESUME:
+
+{resume}
+"""
+
+
+    # --------------------------------------------------------
+    # JOB MATCH
+    # --------------------------------------------------------
+
+    elif tool == "job":
+
+        prompt = f"""
+You are an AI Job Match Analyzer.
 
 Compare the resume with the job description.
 
-Rules:
-- Use only information provided by the user.
-- Never invent skills, experience, education, projects or certificates.
-- Be factual and professional.
-- Give useful suggestions.
-- Keep the report concise.
+Use ONLY information supplied.
 
-Return EXACTLY these sections:
+Return:
 
-OVERALL MATCH:
-MATCH_PERCENTAGE: <number from 0 to 100>
-Give a short explanation.
+MATCH PERCENTAGE: <number from 0 to 100>
+
+MATCH SUMMARY:
 
 MATCHED SKILLS:
-- skill
-
-MISSING SKILLS:
-- skill
-
-RELEVANT EXPERIENCE:
 - item
 
-AI RECOMMENDATIONS:
-- recommendation
+MISSING SKILLS:
+- item
 
-ATS KEYWORDS:
-- keyword
+MATCHED REQUIREMENTS:
+- item
 
+MISSING REQUIREMENTS:
+- item
+
+RECOMMENDATIONS:
+- item
 
 RESUME:
+
 {resume}
 
-
 JOB DESCRIPTION:
-{job_description}
+
+{job}
 """
 
-    try:
-        response = llm.invoke(prompt)
-        return get_response_text(response)
 
-    except Exception as e:
-        return "AI analysis failed: " + str(e)
+    # --------------------------------------------------------
+    # SKILL GAP
+    # --------------------------------------------------------
+
+    elif tool == "skills":
+
+        prompt = f"""
+You are an AI Skill Gap Analyzer.
+
+Analyze the candidate's current skills against the
+target job requirements.
+
+Do not invent skills.
+
+Return:
+
+CURRENT SKILLS:
+- skill
+
+REQUIRED SKILLS:
+- skill
+
+SKILLS TO LEARN:
+- skill
+
+PRIORITY SKILLS:
+- skill
+
+RECOMMENDED LEARNING ORDER:
+1.
+2.
+3.
+4.
+
+RESUME:
+
+{resume}
+
+JOB DESCRIPTION:
+
+{job}
+"""
 
 
-# =========================
+    # --------------------------------------------------------
+    # RESUME IMPROVER
+    # --------------------------------------------------------
+
+    elif tool == "improve":
+
+        prompt = f"""
+You are a professional resume improvement assistant.
+
+Improve the supplied resume for the supplied job description.
+
+Do NOT invent experience or qualifications.
+
+Preserve the candidate's real information.
+
+Return:
+
+PROFESSIONAL SUMMARY:
+
+IMPROVED SKILLS SECTION:
+
+IMPROVED PROJECT DESCRIPTIONS:
+
+IMPROVED EXPERIENCE:
+
+KEY IMPROVEMENTS:
+
+ATS KEYWORDS:
+
+RESUME:
+
+{resume}
+
+JOB DESCRIPTION:
+
+{job}
+"""
+
+
+    # --------------------------------------------------------
+    # COVER LETTER
+    # --------------------------------------------------------
+
+    elif tool == "cover":
+
+        prompt = f"""
+You are a professional cover letter writer.
+
+Create a professional job-specific cover letter.
+
+Use ONLY information available in the resume.
+
+Do not invent experience or qualifications.
+
+Make it suitable for an internship or entry-level position.
+
+Return a polished cover letter.
+
+RESUME:
+
+{resume}
+
+JOB DESCRIPTION:
+
+{job}
+"""
+
+
+    # --------------------------------------------------------
+    # PROJECT SUGGESTIONS
+    # --------------------------------------------------------
+
+    elif tool == "projects":
+
+        prompt = f"""
+You are an AI project advisor for a student looking
+for internships and entry-level AI/ML jobs.
+
+Based on the candidate's resume and target job,
+suggest useful portfolio projects.
+
+Do not claim the candidate already built projects
+unless they appear in the resume.
+
+Suggest 5 projects.
+
+For each project give:
+
+PROJECT NAME:
+PURPOSE:
+TECHNOLOGIES:
+AI/ML CONCEPTS:
+KEY FEATURES:
+WHY IT HELPS THE CANDIDATE:
+
+RESUME:
+
+{resume}
+
+JOB DESCRIPTION:
+
+{job}
+"""
+
+
+    # --------------------------------------------------------
+    # LEARNING ROADMAP
+    # --------------------------------------------------------
+
+    elif tool == "roadmap":
+
+        prompt = f"""
+You are an AI career learning advisor.
+
+Create a practical learning roadmap based on
+the candidate's current skills and target job.
+
+Do not assume skills that are not shown.
+
+Create:
+
+CURRENT LEVEL:
+
+GOAL:
+
+PHASE 1:
+Topics:
+Projects:
+
+PHASE 2:
+Topics:
+Projects:
+
+PHASE 3:
+Topics:
+Projects:
+
+PHASE 4:
+Topics:
+Projects:
+
+RECOMMENDED TOOLS:
+
+FINAL PORTFOLIO PLAN:
+
+RESUME:
+
+{resume}
+
+JOB DESCRIPTION:
+
+{job}
+"""
+
+
+    # --------------------------------------------------------
+    # MOCK INTERVIEW
+    # --------------------------------------------------------
+
+    elif tool == "interview":
+
+        prompt = f"""
+You are an AI technical interviewer.
+
+Create a mock interview for the candidate.
+
+The candidate is applying for the target job.
+
+Create 10 interview questions.
+
+Include:
+
+- 4 technical questions
+- 2 project questions
+- 2 behavioral questions
+- 2 job-specific questions
+
+For each question provide:
+
+QUESTION:
+WHAT THE INTERVIEWER IS TESTING:
+WHAT A GOOD ANSWER SHOULD INCLUDE:
+
+Do not invent experience for the candidate.
+
+RESUME:
+
+{resume}
+
+JOB DESCRIPTION:
+
+{job}
+"""
+
+
+    # --------------------------------------------------------
+    # CAREER CHAT
+    # --------------------------------------------------------
+
+    elif tool == "chat":
+
+        prompt = f"""
+You are an AI Career Assistant.
+
+Answer the user's career question clearly.
+
+Give practical advice for a college student
+interested in AI, ML and software careers.
+
+Do not invent personal information.
+
+USER QUESTION:
+
+{text}
+"""
+
+
+    else:
+
+        return "Please select a valid career tool."
+
+
+    return ask_ai(prompt)
+
+
+# ============================================================
+# API ENDPOINT
+# ============================================================
+
+@app.post("/career")
+def career(request: CareerRequest):
+
+    return {
+        "result": career_agent(request)
+    }
+
+
+# ============================================================
 # FRONTEND
-# =========================
+# ============================================================
 
 HTML = """
 <!DOCTYPE html>
@@ -133,9 +478,10 @@ HTML = """
 <meta charset="UTF-8">
 
 <meta name="viewport"
-      content="width=device-width, initial-scale=1.0">
+content="width=device-width, initial-scale=1.0">
 
-<title>AI Resume Analyzer Pro</title>
+<title>AI Career Agent</title>
+
 
 <style>
 
@@ -145,356 +491,545 @@ HTML = """
     padding: 0;
 }
 
+
 body {
-    font-family: Arial, Helvetica, sans-serif;
+
+    font-family:
+    Arial,
+    Helvetica,
+    sans-serif;
+
     background: #f5f7fb;
+
     color: #172033;
+
     line-height: 1.6;
 }
 
 
-/* NAVBAR */
+/* =====================================================
+   NAVBAR
+   ===================================================== */
 
 .navbar {
+
     height: 70px;
+
     background: white;
+
     border-bottom: 1px solid #e5e7eb;
+
     display: flex;
+
     align-items: center;
+
     justify-content: space-between;
+
     padding: 0 6%;
+
 }
+
 
 .logo {
+
     display: flex;
+
     align-items: center;
+
     gap: 10px;
+
     font-size: 20px;
+
     font-weight: bold;
 }
+
 
 .logo-icon {
-    width: 38px;
-    height: 38px;
-    border-radius: 10px;
+
+    width: 40px;
+
+    height: 40px;
+
     background: #111827;
+
     color: white;
+
+    border-radius: 11px;
+
     display: flex;
+
     align-items: center;
+
     justify-content: center;
-}
 
-.logo span {
-    color: #2563eb;
-}
-
-.badge {
-    background: #eef4ff;
-    color: #2563eb;
-    padding: 6px 12px;
-    border-radius: 20px;
-    font-size: 13px;
     font-weight: bold;
 }
 
 
-/* HERO */
+.logo span {
+
+    color: #2563eb;
+}
+
+
+.badge {
+
+    background: #eef4ff;
+
+    color: #2563eb;
+
+    padding: 6px 13px;
+
+    border-radius: 20px;
+
+    font-size: 13px;
+
+    font-weight: bold;
+}
+
+
+/* =====================================================
+   HERO
+   ===================================================== */
 
 .hero {
-    max-width: 1100px;
+
+    max-width: 1050px;
+
     margin: auto;
+
     text-align: center;
+
     padding: 60px 25px 35px;
 }
 
+
 .hero h1 {
+
     font-size: 46px;
+
     line-height: 1.15;
+
     margin-bottom: 18px;
 }
 
+
 .hero h1 span {
+
     color: #2563eb;
 }
 
+
 .hero p {
-    max-width: 700px;
+
+    max-width: 720px;
+
     margin: auto;
+
     color: #64748b;
+
     font-size: 17px;
 }
 
 
-/* MAIN */
+/* =====================================================
+   MAIN
+   ===================================================== */
 
 .container {
+
     max-width: 1100px;
+
     margin: auto;
+
     padding: 10px 25px 60px;
 }
 
-.input-grid {
+
+/* =====================================================
+   TOOLS
+   ===================================================== */
+
+.tools {
+
     display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 22px;
+
+    grid-template-columns:
+    repeat(4, 1fr);
+
+    gap: 15px;
+
+    margin-bottom: 25px;
 }
 
 
-/* CARDS */
+.tool {
 
-.card,
-.result-card,
-.full-report,
-.score-card {
     background: white;
+
     border: 1px solid #e5e9f0;
-    border-radius: 16px;
-    box-shadow: 0 8px 25px rgba(15, 23, 42, 0.04);
+
+    border-radius: 14px;
+
+    padding: 18px;
+
+    cursor: pointer;
+
+    transition: 0.2s;
+
+    text-align: left;
 }
 
-.card {
-    padding: 24px;
+
+.tool:hover {
+
+    border-color: #2563eb;
+
+    transform: translateY(-2px);
 }
 
-.card-header {
-    display: flex;
-    justify-content: space-between;
-    margin-bottom: 15px;
+
+.tool.active {
+
+    border: 2px solid #2563eb;
+
+    background: #f8fbff;
 }
 
-.card-title {
-    font-size: 17px;
+
+.tool-icon {
+
+    font-size: 25px;
+
+    margin-bottom: 8px;
+}
+
+
+.tool-title {
+
     font-weight: bold;
-}
 
-.card-subtitle {
-    font-size: 13px;
-    color: #94a3b8;
+    font-size: 15px;
 }
 
 
-/* TEXTAREA */
+.tool-description {
+
+    color: #64748b;
+
+    font-size: 12px;
+
+    margin-top: 4px;
+}
+
+
+/* =====================================================
+   INPUT CARD
+   ===================================================== */
+
+.input-card {
+
+    background: white;
+
+    border: 1px solid #e5e9f0;
+
+    border-radius: 16px;
+
+    padding: 25px;
+
+    box-shadow:
+    0 8px 25px
+    rgba(15, 23, 42, 0.04);
+}
+
+
+.input-title {
+
+    font-size: 19px;
+
+    font-weight: bold;
+
+    margin-bottom: 6px;
+}
+
+
+.input-subtitle {
+
+    color: #64748b;
+
+    font-size: 14px;
+
+    margin-bottom: 18px;
+}
+
 
 textarea {
+
     width: 100%;
-    height: 310px;
+
+    height: 220px;
+
     resize: vertical;
-    border: 1px solid #dce2ea;
+
+    border:
+    1px solid #dce2ea;
+
     border-radius: 12px;
+
     padding: 15px;
-    font-family: Arial, sans-serif;
+
+    font-family: Arial;
+
     font-size: 14px;
+
     outline: none;
-    color: #334155;
+
     background: #fafbfc;
 }
 
+
 textarea:focus {
+
     border-color: #2563eb;
+
     background: white;
 }
 
 
-/* BUTTONS */
+.second-input {
 
-.actions {
-    display: flex;
-    justify-content: center;
-    gap: 12px;
-    margin: 25px 0 35px;
+    display: none;
+
+    margin-top: 18px;
 }
 
-button {
-    border: none;
-    border-radius: 10px;
-    padding: 13px 25px;
-    font-size: 15px;
+
+.second-input label {
+
+    display: block;
+
     font-weight: bold;
+
+    margin-bottom: 8px;
+}
+
+
+.action-row {
+
+    display: flex;
+
+    justify-content: center;
+
+    gap: 12px;
+
+    margin-top: 20px;
+}
+
+
+button {
+
+    border: none;
+
+    border-radius: 10px;
+
+    padding: 13px 25px;
+
+    font-size: 15px;
+
+    font-weight: bold;
+
     cursor: pointer;
 }
 
+
 .primary {
+
     background: #2563eb;
+
     color: white;
-    min-width: 180px;
+
+    min-width: 190px;
 }
 
+
 .primary:hover {
+
     background: #1d4ed8;
 }
 
+
 .secondary {
+
     background: white;
+
     color: #475569;
+
     border: 1px solid #dce2ea;
 }
 
 
-/* LOADING */
+/* =====================================================
+   LOADING
+   ===================================================== */
 
 .loading {
+
     display: none;
+
     text-align: center;
-    margin: 20px;
+
+    padding: 25px;
+
     color: #64748b;
 }
 
+
 .spinner {
+
     display: inline-block;
+
     width: 20px;
+
     height: 20px;
-    border: 3px solid #dbe5ff;
-    border-top: 3px solid #2563eb;
+
+    border:
+    3px solid #dbe5ff;
+
+    border-top:
+    3px solid #2563eb;
+
     border-radius: 50%;
-    animation: spin 0.8s linear infinite;
+
+    animation:
+    spin 0.8s linear infinite;
+
     vertical-align: middle;
+
     margin-right: 8px;
 }
 
+
 @keyframes spin {
+
     to {
         transform: rotate(360deg);
     }
+
 }
 
 
-/* RESULTS */
+/* =====================================================
+   RESULT
+   ===================================================== */
 
-.results {
+.result {
+
     display: none;
+
+    margin-top: 25px;
 }
 
-.results-title {
-    font-size: 24px;
-    margin-bottom: 20px;
-}
 
-.score-card {
+.result-header {
+
+    background: white;
+
+    border:
+    1px solid #e5e9f0;
+
+    border-radius: 16px;
+
     padding: 25px;
+
     margin-bottom: 20px;
-    display: flex;
-    align-items: center;
-    gap: 25px;
 }
 
-.score-circle {
-    width: 95px;
-    height: 95px;
-    border-radius: 50%;
-    border: 8px solid #2563eb;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 24px;
-    font-weight: bold;
-    color: #2563eb;
-    flex-shrink: 0;
-}
 
-.score-info h3 {
+.result-header h2 {
+
     margin-bottom: 5px;
 }
 
-.score-info p {
+
+.result-header p {
+
     color: #64748b;
-}
 
-
-/* RESULT GRID */
-
-.result-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 20px;
-    margin-bottom: 20px;
-}
-
-.result-card {
-    padding: 24px;
-}
-
-.result-card h3 {
-    font-size: 17px;
-    margin-bottom: 15px;
-}
-
-.result-card ul {
-    padding-left: 20px;
-}
-
-.result-card li {
-    margin-bottom: 8px;
-    color: #475569;
-}
-
-
-/* KEYWORDS */
-
-.keyword-card {
-    padding: 24px;
-    margin-bottom: 20px;
-}
-
-.keyword-list {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-}
-
-.keyword {
-    background: #eef4ff;
-    color: #2563eb;
-    padding: 6px 11px;
-    border-radius: 20px;
-    font-size: 13px;
-    font-weight: bold;
-}
-
-
-/* FULL REPORT */
-
-.full-report {
-    padding: 25px;
-}
-
-.full-report h3 {
-    margin-bottom: 15px;
-}
-
-.report-text {
-    white-space: pre-wrap;
-    color: #475569;
     font-size: 14px;
-    line-height: 1.8;
 }
 
 
-/* FOOTER */
+.report {
+
+    background: white;
+
+    border:
+    1px solid #e5e9f0;
+
+    border-radius: 16px;
+
+    padding: 28px;
+
+    white-space: pre-wrap;
+
+    color: #334155;
+
+    line-height: 1.8;
+
+    font-size: 14px;
+
+    box-shadow:
+    0 8px 25px
+    rgba(15, 23, 42, 0.04);
+}
+
+
+/* =====================================================
+   FOOTER
+   ===================================================== */
 
 .footer {
+
     text-align: center;
-    padding: 30px;
+
+    padding: 35px;
+
     color: #94a3b8;
+
     font-size: 13px;
 }
 
 
-/* MOBILE */
+/* =====================================================
+   RESPONSIVE
+   ===================================================== */
 
-@media (max-width: 800px) {
+@media(max-width: 900px) {
 
-    .input-grid,
-    .result-grid {
+    .tools {
+
+        grid-template-columns:
+        repeat(2, 1fr);
+    }
+
+}
+
+
+@media(max-width: 600px) {
+
+    .tools {
+
         grid-template-columns: 1fr;
     }
 
     .hero h1 {
-        font-size: 36px;
+
+        font-size: 35px;
     }
 
-    .score-card {
-        flex-direction: column;
-        text-align: center;
+    .navbar {
+
+        padding: 0 20px;
     }
 
 }
@@ -507,7 +1042,9 @@ button {
 <body>
 
 
-<!-- NAVBAR -->
+<!-- =====================================================
+     NAVBAR
+     ===================================================== -->
 
 <nav class="navbar">
 
@@ -517,10 +1054,11 @@ button {
             AI
         </div>
 
-        Resume Analyzer
-        <span>Pro</span>
+        AI Career
+        <span>Agent</span>
 
     </div>
+
 
     <div class="badge">
         AI Powered
@@ -529,240 +1067,337 @@ button {
 </nav>
 
 
-<!-- HERO -->
+<!-- =====================================================
+     HERO
+     ===================================================== -->
 
 <section class="hero">
 
     <h1>
-        Make your resume
-        <span>job-ready.</span>
+
+        Your Personal
+        <span>AI Career Agent</span>
+
     </h1>
 
+
     <p>
-        Compare your resume with a target job description,
-        discover missing skills, improve your content and
-        identify important ATS keywords using AI.
+
+        Analyze your resume, match jobs,
+        discover skill gaps, improve your resume,
+        prepare for interviews and build your
+        personalized career roadmap.
+
     </p>
 
 </section>
 
 
-<!-- MAIN -->
+<!-- =====================================================
+     MAIN
+     ===================================================== -->
 
 <main class="container">
 
 
-    <!-- INPUTS -->
+<!-- TOOLS -->
 
-    <div class="input-grid">
+<div class="tools">
 
 
-        <!-- RESUME -->
+    <div
+        class="tool active"
+        data-tool="resume"
+        onclick="selectTool('resume', this)"
+    >
 
-        <div class="card">
-
-            <div class="card-header">
-
-                <div class="card-title">
-                    Your Resume
-                </div>
-
-                <div class="card-subtitle">
-                    Paste resume text
-                </div>
-
-            </div>
-
-            <textarea
-                id="resume"
-                placeholder="Paste your resume here..."
-            ></textarea>
-
+        <div class="tool-icon">
+            📄
         </div>
 
-
-        <!-- JOB -->
-
-        <div class="card">
-
-            <div class="card-header">
-
-                <div class="card-title">
-                    Target Job
-                </div>
-
-                <div class="card-subtitle">
-                    Paste job description
-                </div>
-
-            </div>
-
-            <textarea
-                id="job"
-                placeholder="Paste the job description here..."
-            ></textarea>
-
+        <div class="tool-title">
+            Resume Analyzer
         </div>
+
+        <div class="tool-description">
+            Analyze your resume
+        </div>
+
+    </div>
+
+
+    <div
+        class="tool"
+        data-tool="job"
+        onclick="selectTool('job', this)"
+    >
+
+        <div class="tool-icon">
+            🎯
+        </div>
+
+        <div class="tool-title">
+            Job Match
+        </div>
+
+        <div class="tool-description">
+            Compare resume with jobs
+        </div>
+
+    </div>
+
+
+    <div
+        class="tool"
+        data-tool="skills"
+        onclick="selectTool('skills', this)"
+    >
+
+        <div class="tool-icon">
+            🛠️
+        </div>
+
+        <div class="tool-title">
+            Skill Gap
+        </div>
+
+        <div class="tool-description">
+            Find skills to learn
+        </div>
+
+    </div>
+
+
+    <div
+        class="tool"
+        data-tool="improve"
+        onclick="selectTool('improve', this)"
+    >
+
+        <div class="tool-icon">
+            ✍️
+        </div>
+
+        <div class="tool-title">
+            Resume Improver
+        </div>
+
+        <div class="tool-description">
+            Improve your resume
+        </div>
+
+    </div>
+
+
+    <div
+        class="tool"
+        data-tool="cover"
+        onclick="selectTool('cover', this)"
+    >
+
+        <div class="tool-icon">
+            📝
+        </div>
+
+        <div class="tool-title">
+            Cover Letter
+        </div>
+
+        <div class="tool-description">
+            Generate a cover letter
+        </div>
+
+    </div>
+
+
+    <div
+        class="tool"
+        data-tool="projects"
+        onclick="selectTool('projects', this)"
+    >
+
+        <div class="tool-icon">
+            💡
+        </div>
+
+        <div class="tool-title">
+            Project Ideas
+        </div>
+
+        <div class="tool-description">
+            Get portfolio projects
+        </div>
+
+    </div>
+
+
+    <div
+        class="tool"
+        data-tool="roadmap"
+        onclick="selectTool('roadmap', this)"
+    >
+
+        <div class="tool-icon">
+            📚
+        </div>
+
+        <div class="tool-title">
+            Learning Roadmap
+        </div>
+
+        <div class="tool-description">
+            Build your career plan
+        </div>
+
+    </div>
+
+
+    <div
+        class="tool"
+        data-tool="interview"
+        onclick="selectTool('interview', this)"
+    >
+
+        <div class="tool-icon">
+            🎤
+        </div>
+
+        <div class="tool-title">
+            Mock Interview
+        </div>
+
+        <div class="tool-description">
+            Practice interviews
+        </div>
+
+    </div>
+
+
+</div>
+
+
+<!-- INPUT -->
+
+<div class="input-card">
+
+
+    <div class="input-title"
+         id="inputTitle">
+
+        Resume Analyzer
+
+    </div>
+
+
+    <div class="input-subtitle"
+         id="inputSubtitle">
+
+        Paste your resume below and let AI
+        analyze your career profile.
+
+    </div>
+
+
+    <textarea
+        id="mainText"
+        placeholder="Paste your resume here..."
+    ></textarea>
+
+
+    <!-- SECOND INPUT -->
+
+    <div
+        class="second-input"
+        id="secondInput"
+    >
+
+        <label id="secondLabel">
+
+            Job Description
+
+        </label>
+
+
+        <textarea
+            id="secondText"
+            placeholder="Paste the job description here..."
+        ></textarea>
 
     </div>
 
 
     <!-- BUTTONS -->
 
-    <div class="actions">
+    <div class="action-row">
 
         <button
             class="primary"
-            onclick="analyze()"
+            onclick="runAgent()"
         >
-            Analyze Resume
+
+            Run AI Agent
+
         </button>
+
 
         <button
             class="secondary"
-            onclick="clearAll()"
+            onclick="clearInputs()"
         >
+
             Clear
+
         </button>
 
     </div>
 
 
-    <!-- LOADING -->
+</div>
 
-    <div
-        class="loading"
-        id="loading"
-    >
 
-        <span class="spinner"></span>
+<!-- LOADING -->
 
-        AI is analyzing your resume...
+<div
+    class="loading"
+    id="loading"
+>
+
+    <span class="spinner"></span>
+
+    AI Career Agent is working...
+
+</div>
+
+
+<!-- RESULT -->
+
+<section
+    class="result"
+    id="result"
+>
+
+
+    <div class="result-header">
+
+        <h2>
+            AI Career Report
+        </h2>
+
+        <p>
+            Generated by your AI Career Agent
+        </p>
 
     </div>
 
 
-    <!-- RESULTS -->
-
-    <section
-        class="results"
-        id="results"
-    >
-
-        <h2 class="results-title">
-            Analysis Results
-        </h2>
+    <div
+        class="report"
+        id="report"
+    ></div>
 
 
-        <!-- SCORE -->
+</section>
 
-        <div class="score-card">
-
-            <div
-                class="score-circle"
-                id="score"
-            >
-                --
-            </div>
-
-            <div class="score-info">
-
-                <h3>
-                    Overall Resume Match
-                </h3>
-
-                <p id="summary">
-                    Analysis completed.
-                </p>
-
-            </div>
-
-        </div>
-
-
-        <!-- RESULT CARDS -->
-
-        <div class="result-grid">
-
-
-            <div class="result-card">
-
-                <h3>
-                    ✓ Matched Skills
-                </h3>
-
-                <ul id="matched"></ul>
-
-            </div>
-
-
-            <div class="result-card">
-
-                <h3>
-                    ⚠ Missing Skills
-                </h3>
-
-                <ul id="missing"></ul>
-
-            </div>
-
-
-            <div class="result-card">
-
-                <h3>
-                    Relevant Experience
-                </h3>
-
-                <ul id="experience"></ul>
-
-            </div>
-
-
-            <div class="result-card">
-
-                <h3>
-                    AI Recommendations
-                </h3>
-
-                <ul id="recommendations"></ul>
-
-            </div>
-
-        </div>
-
-
-        <!-- ATS KEYWORDS -->
-
-        <div class="result-card keyword-card">
-
-            <h3>
-                ATS Keywords
-            </h3>
-
-            <div
-                class="keyword-list"
-                id="keywords"
-            ></div>
-
-        </div>
-
-
-        <!-- FULL REPORT -->
-
-        <div class="full-report">
-
-            <h3>
-                Complete AI Report
-            </h3>
-
-            <div
-                class="report-text"
-                id="fullReport"
-            ></div>
-
-        </div>
-
-    </section>
 
 </main>
 
@@ -771,7 +1406,8 @@ button {
 
 <footer class="footer">
 
-    AI Resume Analyzer Pro · Built with Python, FastAPI and Gemini
+    AI Career Agent · Built with Python,
+    FastAPI, LangChain and Gemini
 
 </footer>
 
@@ -779,403 +1415,377 @@ button {
 <script>
 
 
-// =========================
-// ANALYZE
-// =========================
+// ========================================================
+// CURRENT TOOL
+// ========================================================
 
-async function analyze() {
-
-    const resume =
-        document.getElementById("resume").value.trim();
-
-    const job =
-        document.getElementById("job").value.trim();
-
-    const loading =
-        document.getElementById("loading");
-
-    const results =
-        document.getElementById("results");
+let currentTool = "resume";
 
 
-    if (!resume || !job) {
+// ========================================================
+// TOOL INFORMATION
+// ========================================================
 
-        alert(
-            "Please provide both your resume and the job description."
+const toolInfo = {
+
+    resume: {
+
+        title: "Resume Analyzer",
+
+        subtitle:
+        "Paste your resume below and let AI analyze your career profile.",
+
+        placeholder:
+        "Paste your resume here...",
+
+        second: false
+
+    },
+
+
+    job: {
+
+        title: "Job Match Analyzer",
+
+        subtitle:
+        "Compare your resume with a target job description.",
+
+        placeholder:
+        "Paste your resume here...",
+
+        second: true
+
+    },
+
+
+    skills: {
+
+        title: "Skill Gap Analyzer",
+
+        subtitle:
+        "Discover the skills you need to learn for your target job.",
+
+        placeholder:
+        "Paste your resume and current skills here...",
+
+        second: true
+
+    },
+
+
+    improve: {
+
+        title: "AI Resume Improver",
+
+        subtitle:
+        "Improve your resume while keeping your real experience.",
+
+        placeholder:
+        "Paste your current resume here...",
+
+        second: true
+
+    },
+
+
+    cover: {
+
+        title: "Cover Letter Generator",
+
+        subtitle:
+        "Generate a professional job-specific cover letter.",
+
+        placeholder:
+        "Paste your resume here...",
+
+        second: true
+
+    },
+
+
+    projects: {
+
+        title: "AI Project Advisor",
+
+        subtitle:
+        "Get portfolio project ideas based on your career target.",
+
+        placeholder:
+        "Paste your resume and current skills here...",
+
+        second: true
+
+    },
+
+
+    roadmap: {
+
+        title: "Learning Roadmap",
+
+        subtitle:
+        "Build a personalized learning path for your career goal.",
+
+        placeholder:
+        "Paste your resume and current skills here...",
+
+        second: true
+
+    },
+
+
+    interview: {
+
+        title: "AI Mock Interview",
+
+        subtitle:
+        "Generate a personalized technical and behavioral interview.",
+
+        placeholder:
+        "Paste your resume here...",
+
+        second: true
+
+    }
+
+};
+
+
+// ========================================================
+// SELECT TOOL
+// ========================================================
+
+function selectTool(tool, element) {
+
+    currentTool = tool;
+
+
+    document
+        .querySelectorAll(".tool")
+        .forEach(
+            item =>
+                item.classList.remove("active")
         );
 
-        return;
+
+    element.classList.add("active");
+
+
+    const info =
+        toolInfo[tool];
+
+
+    document.getElementById(
+        "inputTitle"
+    ).textContent =
+        info.title;
+
+
+    document.getElementById(
+        "inputSubtitle"
+    ).textContent =
+        info.subtitle;
+
+
+    document.getElementById(
+        "mainText"
+    ).placeholder =
+        info.placeholder;
+
+
+    const second =
+        document.getElementById(
+            "secondInput"
+        );
+
+
+    if (info.second) {
+
+        second.style.display =
+            "block";
+
+    } else {
+
+        second.style.display =
+            "none";
+
     }
 
 
-    loading.style.display = "block";
+    document.getElementById(
+        "result"
+    ).style.display =
+        "none";
 
-    results.style.display = "none";
+}
+
+
+// ========================================================
+// RUN AGENT
+// ========================================================
+
+async function runAgent() {
+
+    const mainText =
+        document.getElementById(
+            "mainText"
+        ).value.trim();
+
+
+    const secondText =
+        document.getElementById(
+            "secondText"
+        ).value.trim();
+
+
+    if (!mainText) {
+
+        alert(
+            "Please enter the required information."
+        );
+
+        return;
+
+    }
+
+
+    if (
+        toolInfo[currentTool].second
+        &&
+        !secondText
+    ) {
+
+        alert(
+            "Please provide the second input."
+        );
+
+        return;
+
+    }
+
+
+    const loading =
+        document.getElementById(
+            "loading"
+        );
+
+
+    const result =
+        document.getElementById(
+            "result"
+        );
+
+
+    loading.style.display =
+        "block";
+
+
+    result.style.display =
+        "none";
 
 
     try {
 
-        const response = await fetch(
-            "/analyze",
-            {
-                method: "POST",
+        const response =
+            await fetch(
+                "/career",
+                {
 
-                headers: {
-                    "Content-Type": "application/json"
-                },
+                    method: "POST",
 
-                body: JSON.stringify({
-                    resume: resume,
-                    job_description: job
-                })
-            }
-        );
+                    headers: {
+
+                        "Content-Type":
+                        "application/json"
+
+                    },
+
+                    body:
+                    JSON.stringify({
+
+                        tool:
+                        currentTool,
+
+                        resume:
+                        currentTool === "chat"
+                        ? ""
+                        : mainText,
+
+                        job_description:
+                        toolInfo[currentTool].second
+                        ? secondText
+                        : "",
+
+                        text:
+                        mainText
+
+                    })
+
+                }
+            );
 
 
-        const data = await response.json();
+        const data =
+            await response.json();
 
 
-        displayResults(
-            data.result || data.detail || "No result."
-        );
+        document.getElementById(
+            "report"
+        ).textContent =
+            data.result ||
+            "No result returned.";
+
+
+        result.style.display =
+            "block";
+
+
+        result.scrollIntoView({
+            behavior: "smooth"
+        });
 
 
     } catch (error) {
 
-        alert(
-            "Something went wrong. Please try again."
-        );
+        document.getElementById(
+            "report"
+        ).textContent =
+            "Something went wrong: "
+            + error.message;
 
-        console.error(error);
+
+        result.style.display =
+            "block";
 
     } finally {
 
-        loading.style.display = "none";
+        loading.style.display =
+            "none";
 
     }
 
 }
 
 
-// =========================
-// SECTION PARSER
-// =========================
-
-function getSection(text, start, end) {
-
-    const upper =
-        text.toUpperCase();
-
-    const startIndex =
-        upper.indexOf(
-            start.toUpperCase()
-        );
-
-
-    if (startIndex === -1) {
-        return "";
-    }
-
-
-    let content =
-        text.substring(
-            startIndex + start.length
-        );
-
-
-    if (end) {
-
-        const endIndex =
-            content.toUpperCase().indexOf(
-                end.toUpperCase()
-            );
-
-
-        if (endIndex !== -1) {
-
-            content =
-                content.substring(
-                    0,
-                    endIndex
-                );
-        }
-    }
-
-
-    return content.trim();
-
-}
-
-
-// =========================
-// CLEAN TEXT
-// =========================
-
-function cleanText(text) {
-
-    return text
-        .replace(
-            /MATCH_PERCENTAGE:\\s*\\d+/gi,
-            ""
-        )
-        .replace(
-            /^[-*•]\\s*/gm,
-            ""
-        )
-        .trim();
-
-}
-
-
-// =========================
-// FILL LIST
-// =========================
-
-function fillList(id, text) {
-
-    const element =
-        document.getElementById(id);
-
-    element.innerHTML = "";
-
-
-    const lines =
-        text
-            .split("\\n")
-            .map(
-                line =>
-                    line
-                        .replace(
-                            /^[-*•]\\s*/,
-                            ""
-                        )
-                        .trim()
-            )
-            .filter(
-                line =>
-                    line.length > 0
-            );
-
-
-    if (lines.length === 0) {
-
-        const li =
-            document.createElement("li");
-
-        li.textContent =
-            "No specific items identified.";
-
-        element.appendChild(li);
-
-        return;
-    }
-
-
-    lines.forEach(
-        line => {
-
-            const li =
-                document.createElement("li");
-
-            li.textContent = line;
-
-            element.appendChild(li);
-
-        }
-    );
-
-}
-
-
-// =========================
-// KEYWORDS
-// =========================
-
-function fillKeywords(text) {
-
-    const container =
-        document.getElementById("keywords");
-
-    container.innerHTML = "";
-
-
-    const lines =
-        text
-            .split("\\n")
-            .map(
-                line =>
-                    line
-                        .replace(
-                            /^[-*•]\\s*/,
-                            ""
-                        )
-                        .trim()
-            )
-            .filter(
-                line =>
-                    line.length > 0
-            );
-
-
-    lines.forEach(
-        keyword => {
-
-            const span =
-                document.createElement("span");
-
-            span.className =
-                "keyword";
-
-            span.textContent =
-                keyword;
-
-            container.appendChild(span);
-
-        }
-    );
-
-}
-
-
-// =========================
-// DISPLAY RESULTS
-// =========================
-
-function displayResults(report) {
-
-
-    document.getElementById(
-        "fullReport"
-    ).textContent = report;
-
-
-    const match =
-        report.match(
-            /MATCH_PERCENTAGE:\\s*(\\d+)/i
-        );
-
-
-    let percentage = 0;
-
-
-    if (match) {
-
-        percentage =
-            Math.min(
-                100,
-                Math.max(
-                    0,
-                    parseInt(match[1])
-                )
-            );
-
-    }
-
-
-    document.getElementById(
-        "score"
-    ).textContent =
-        percentage + "%";
-
-
-    const overall =
-        getSection(
-            report,
-            "OVERALL MATCH:",
-            "MATCHED SKILLS:"
-        );
-
-
-    document.getElementById(
-        "summary"
-    ).textContent =
-        cleanText(overall);
-
-
-    fillList(
-        "matched",
-        getSection(
-            report,
-            "MATCHED SKILLS:",
-            "MISSING SKILLS:"
-        )
-    );
-
-
-    fillList(
-        "missing",
-        getSection(
-            report,
-            "MISSING SKILLS:",
-            "RELEVANT EXPERIENCE:"
-        )
-    );
-
-
-    fillList(
-        "experience",
-        getSection(
-            report,
-            "RELEVANT EXPERIENCE:",
-            "AI RECOMMENDATIONS:"
-        )
-    );
-
-
-    fillList(
-        "recommendations",
-        getSection(
-            report,
-            "AI RECOMMENDATIONS:",
-            "ATS KEYWORDS:"
-        )
-    );
-
-
-    fillKeywords(
-        getSection(
-            report,
-            "ATS KEYWORDS:",
-            null
-        )
-    );
-
-
-    document.getElementById(
-        "results"
-    ).style.display = "block";
-
-
-    document.getElementById(
-        "results"
-    ).scrollIntoView({
-        behavior: "smooth"
-    });
-
-}
-
-
-// =========================
+// ========================================================
 // CLEAR
-// =========================
+// ========================================================
 
-function clearAll() {
+function clearInputs() {
 
     document.getElementById(
-        "resume"
+        "mainText"
     ).value = "";
 
+
     document.getElementById(
-        "job"
+        "secondText"
     ).value = "";
 
-    document.getElementById(
-        "results"
-    ).style.display = "none";
 
     document.getElementById(
-        "score"
-    ).textContent = "--";
+        "result"
+    ).style.display =
+        "none";
 
 }
 
@@ -1188,50 +1798,19 @@ function clearAll() {
 """
 
 
-# =========================
+# ============================================================
 # HOME PAGE
-# =========================
+# ============================================================
 
 @app.get("/", response_class=HTMLResponse)
 def home():
+
     return HTML
 
 
-# =========================
-# ANALYZE API
-# =========================
-
-@app.post("/analyze")
-def analyze(request: AnalyzeRequest):
-
-    if not request.resume.strip():
-
-        return {
-            "result": "Please provide your resume."
-        }
-
-
-    if not request.job_description.strip():
-
-        return {
-            "result": "Please provide the job description."
-        }
-
-
-    result = analyze_resume(
-        request.resume,
-        request.job_description
-    )
-
-
-    return {
-        "result": result
-    }
-
-
-# =========================
+# ============================================================
 # START SERVER
-# =========================
+# ============================================================
 
 if __name__ == "__main__":
 
