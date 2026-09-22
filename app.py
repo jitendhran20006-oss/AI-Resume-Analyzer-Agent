@@ -1,5 +1,7 @@
 import os
+import time
 import uvicorn
+
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
@@ -7,7 +9,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 
 
 # ============================================================
-# GEMINI CONFIGURATION
+# GEMINI API CONFIGURATION
 # ============================================================
 
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
@@ -17,20 +19,20 @@ if not GEMINI_API_KEY:
 
 
 llm = ChatGoogleGenerativeAI(
-    model="gemma-4-31b-it",
+    model="gemini-2.5-flash",
     api_key=GEMINI_API_KEY,
     temperature=0
 )
 
 
 # ============================================================
-# FASTAPI APPLICATION
+# FASTAPI APP
 # ============================================================
 
 app = FastAPI(
     title="AI Career Agent",
-    description="AI-powered career assistant",
-    version="1.0.0"
+    description="AI-powered career assistant for students and job seekers",
+    version="1.0"
 )
 
 
@@ -46,66 +48,47 @@ class CareerRequest(BaseModel):
 
 
 # ============================================================
-# AI FUNCTION
+# AI FUNCTION WITH RETRY
 # ============================================================
 
-def ask_ai(prompt: str) -> str:
+def ask_ai(prompt: str):
 
-    try:
+    max_attempts = 3
 
-        response = llm.invoke(prompt)
+    for attempt in range(max_attempts):
 
-        content = getattr(response, "content", response)
+        try:
+            response = llm.invoke(prompt)
 
-        if isinstance(content, str):
-            return content
+            return response.content
 
-        if isinstance(content, list):
+        except Exception as e:
 
-            parts = []
+            error_message = str(e)
 
-            for item in content:
+            # Retry temporary Gemini 503 errors
+            if "503" in error_message or "UNAVAILABLE" in error_message:
 
-                if isinstance(item, dict):
+                if attempt < max_attempts - 1:
+                    time.sleep(3)
+                    continue
 
-                    if item.get("text"):
-                        parts.append(str(item["text"]))
+                return (
+                    "Gemini AI is temporarily unavailable because the model "
+                    "is experiencing high demand. Please wait a few seconds "
+                    "and try again."
+                )
 
-                elif isinstance(item, str):
-
-                    parts.append(item)
-
-                else:
-
-                    text = getattr(item, "text", None)
-
-                    if text:
-                        parts.append(str(text))
-
-            if parts:
-                return "\n".join(parts)
-
-        return str(content)
-
-    except Exception as e:
-
-        return "AI service error: " + str(e)
+            return f"AI service error: {error_message}"
 
 
 # ============================================================
 # CAREER AGENT
 # ============================================================
 
-def career_agent(request: CareerRequest) -> str:
-
-    resume = request.resume.strip()
-
-    job = request.job_description.strip()
-
-    text = request.text.strip()
+def career_agent(request: CareerRequest):
 
     tool = request.tool
-
 
     # --------------------------------------------------------
     # RESUME ANALYZER
@@ -114,30 +97,28 @@ def career_agent(request: CareerRequest) -> str:
     if tool == "resume":
 
         prompt = f"""
-You are a professional AI Resume Analyzer.
+You are an expert AI resume analyzer.
 
-Analyze the candidate's resume.
-
-Use ONLY the information provided.
-
-Do not invent qualifications, skills, projects,
-experience, certificates or achievements.
-
-Return:
-
-1. RESUME SUMMARY
-2. KEY STRENGTHS
-3. WEAK AREAS
-4. TECHNICAL SKILLS
-5. PROJECTS
-6. EDUCATION
-7. IMPROVEMENT SUGGESTIONS
+Analyze the following resume.
 
 RESUME:
+{request.resume}
 
-{resume}
+Provide:
+
+1. Overall Resume Summary
+2. Strengths
+3. Weaknesses
+4. Technical Skills
+5. Missing Skills
+6. Projects Analysis
+7. Education Analysis
+8. ATS Improvement Suggestions
+9. Specific Resume Improvements
+10. Final Career Advice
+
+Keep the answer clear and useful for a B.Tech student.
 """
-
 
     # --------------------------------------------------------
     # JOB MATCH
@@ -146,42 +127,29 @@ RESUME:
     elif tool == "job":
 
         prompt = f"""
-You are an AI Job Match Analyzer.
+You are an AI job matching assistant.
 
-Compare the resume with the job description.
-
-Use ONLY information supplied.
-
-Return:
-
-MATCH PERCENTAGE: <number from 0 to 100>
-
-MATCH SUMMARY:
-
-MATCHED SKILLS:
-- item
-
-MISSING SKILLS:
-- item
-
-MATCHED REQUIREMENTS:
-- item
-
-MISSING REQUIREMENTS:
-- item
-
-RECOMMENDATIONS:
-- item
+Compare the candidate resume with the job description.
 
 RESUME:
-
-{resume}
+{request.resume}
 
 JOB DESCRIPTION:
+{request.job_description}
 
-{job}
+Provide:
+
+1. Matching Skills
+2. Missing Skills
+3. Relevant Projects
+4. Education Match
+5. Technical Skill Match
+6. Important Missing Requirements
+7. Suggestions to Improve the Resume for This Job
+8. Interview Preparation Topics
+
+Do not invent information.
 """
-
 
     # --------------------------------------------------------
     # SKILL GAP
@@ -190,42 +158,27 @@ JOB DESCRIPTION:
     elif tool == "skills":
 
         prompt = f"""
-You are an AI Skill Gap Analyzer.
+You are an AI career skill-gap analyzer.
 
-Analyze the candidate's current skills against the
-target job requirements.
-
-Do not invent skills.
-
-Return:
-
-CURRENT SKILLS:
-- skill
-
-REQUIRED SKILLS:
-- skill
-
-SKILLS TO LEARN:
-- skill
-
-PRIORITY SKILLS:
-- skill
-
-RECOMMENDED LEARNING ORDER:
-1.
-2.
-3.
-4.
+Analyze the candidate information below.
 
 RESUME:
+{request.resume}
 
-{resume}
+Identify:
 
-JOB DESCRIPTION:
+1. Current Skills
+2. Strong Skills
+3. Missing Skills
+4. Skills Required for AI/ML Jobs
+5. Priority Skills to Learn
+6. Beginner Level Skills
+7. Intermediate Level Skills
+8. Advanced Level Skills
+9. Recommended Learning Order
 
-{job}
+Create a practical roadmap for a B.Tech AI/ML student.
 """
-
 
     # --------------------------------------------------------
     # RESUME IMPROVER
@@ -234,37 +187,28 @@ JOB DESCRIPTION:
     elif tool == "improve":
 
         prompt = f"""
-You are a professional resume improvement assistant.
+You are an expert professional resume writer.
 
-Improve the supplied resume for the supplied job description.
-
-Do NOT invent experience or qualifications.
-
-Preserve the candidate's real information.
-
-Return:
-
-PROFESSIONAL SUMMARY:
-
-IMPROVED SKILLS SECTION:
-
-IMPROVED PROJECT DESCRIPTIONS:
-
-IMPROVED EXPERIENCE:
-
-KEY IMPROVEMENTS:
-
-ATS KEYWORDS:
+Improve the following resume.
 
 RESUME:
+{request.resume}
 
-{resume}
+Rewrite it in a professional ATS-friendly format.
 
-JOB DESCRIPTION:
+Include:
 
-{job}
+1. Professional Summary
+2. Technical Skills
+3. Projects
+4. Education
+5. Achievements if available
+6. Better action words
+7. ATS-friendly wording
+
+Do not invent qualifications, experience or achievements.
+Only improve the information provided.
 """
-
 
     # --------------------------------------------------------
     # COVER LETTER
@@ -273,64 +217,54 @@ JOB DESCRIPTION:
     elif tool == "cover":
 
         prompt = f"""
-You are a professional cover letter writer.
+You are an expert career assistant.
 
-Create a professional job-specific cover letter.
-
-Use ONLY information available in the resume.
-
-Do not invent experience or qualifications.
-
-Make it suitable for an internship or entry-level position.
-
-Return a polished cover letter.
+Create a professional cover letter using the information below.
 
 RESUME:
-
-{resume}
+{request.resume}
 
 JOB DESCRIPTION:
+{request.job_description}
 
-{job}
+The cover letter should:
+
+- Be professional
+- Be suitable for an internship/job application
+- Highlight relevant skills
+- Mention relevant projects
+- Be concise
+- Avoid making up experience
 """
 
-
     # --------------------------------------------------------
-    # PROJECT SUGGESTIONS
+    # PROJECT IDEAS
     # --------------------------------------------------------
 
     elif tool == "projects":
 
         prompt = f"""
-You are an AI project advisor for a student looking
-for internships and entry-level AI/ML jobs.
+You are an AI/ML project mentor.
 
-Based on the candidate's resume and target job,
-suggest useful portfolio projects.
-
-Do not claim the candidate already built projects
-unless they appear in the resume.
-
-Suggest 5 projects.
-
-For each project give:
-
-PROJECT NAME:
-PURPOSE:
-TECHNOLOGIES:
-AI/ML CONCEPTS:
-KEY FEATURES:
-WHY IT HELPS THE CANDIDATE:
+Based on the candidate information below:
 
 RESUME:
+{request.resume}
 
-{resume}
+Suggest 8 strong AI/ML software projects.
 
-JOB DESCRIPTION:
+For every project provide:
 
-{job}
+1. Project Name
+2. Problem it solves
+3. Main Features
+4. Technologies
+5. AI/ML concepts
+6. Difficulty Level
+7. Why it is useful for a resume
+
+Prefer practical projects that can be deployed online.
 """
-
 
     # --------------------------------------------------------
     # LEARNING ROADMAP
@@ -339,48 +273,29 @@ JOB DESCRIPTION:
     elif tool == "roadmap":
 
         prompt = f"""
-You are an AI career learning advisor.
+You are an AI/ML career mentor.
 
-Create a practical learning roadmap based on
-the candidate's current skills and target job.
+Create a personalized learning roadmap based on:
 
-Do not assume skills that are not shown.
+RESUME:
+{request.resume}
 
 Create:
 
-CURRENT LEVEL:
+1. Current Level
+2. Python Roadmap
+3. Data Science Roadmap
+4. Machine Learning Roadmap
+5. Deep Learning Roadmap
+6. Generative AI Roadmap
+7. AI Agent Roadmap
+8. GitHub Roadmap
+9. Project Roadmap
+10. Internship Preparation
+11. Interview Preparation
 
-GOAL:
-
-PHASE 1:
-Topics:
-Projects:
-
-PHASE 2:
-Topics:
-Projects:
-
-PHASE 3:
-Topics:
-Projects:
-
-PHASE 4:
-Topics:
-Projects:
-
-RECOMMENDED TOOLS:
-
-FINAL PORTFOLIO PLAN:
-
-RESUME:
-
-{resume}
-
-JOB DESCRIPTION:
-
-{job}
+Make the roadmap practical and suitable for a B.Tech student.
 """
-
 
     # --------------------------------------------------------
     # MOCK INTERVIEW
@@ -391,36 +306,24 @@ JOB DESCRIPTION:
         prompt = f"""
 You are an AI technical interviewer.
 
-Create a mock interview for the candidate.
+Candidate Resume:
 
-The candidate is applying for the target job.
+{request.resume}
 
-Create 10 interview questions.
+Create a mock interview containing:
 
-Include:
+1. HR Questions
+2. Python Questions
+3. Machine Learning Questions
+4. AI Questions
+5. Project Questions
+6. Git/GitHub Questions
+7. Generative AI Questions
 
-- 4 technical questions
-- 2 project questions
-- 2 behavioral questions
-- 2 job-specific questions
+Ask questions one at a time.
 
-For each question provide:
-
-QUESTION:
-WHAT THE INTERVIEWER IS TESTING:
-WHAT A GOOD ANSWER SHOULD INCLUDE:
-
-Do not invent experience for the candidate.
-
-RESUME:
-
-{resume}
-
-JOB DESCRIPTION:
-
-{job}
+Start with the first interview question.
 """
-
 
     # --------------------------------------------------------
     # CAREER CHAT
@@ -431,22 +334,29 @@ JOB DESCRIPTION:
         prompt = f"""
 You are an AI Career Assistant.
 
-Answer the user's career question clearly.
-
-Give practical advice for a college student
-interested in AI, ML and software careers.
-
-Do not invent personal information.
+Answer the user's career-related question.
 
 USER QUESTION:
+{request.text}
 
-{text}
+Give a clear, practical and beginner-friendly answer.
+
+Focus on:
+- AI
+- Machine Learning
+- Python
+- Data Science
+- Software Development
+- GitHub
+- Resume
+- Internships
+- Jobs
+- Career preparation
 """
-
 
     else:
 
-        return "Please select a valid career tool."
+        return "Invalid tool selected."
 
 
     return ask_ai(prompt)
@@ -459,8 +369,10 @@ USER QUESTION:
 @app.post("/career")
 def career(request: CareerRequest):
 
+    result = career_agent(request)
+
     return {
-        "result": career_agent(request)
+        "result": result
     }
 
 
@@ -471,566 +383,265 @@ def career(request: CareerRequest):
 HTML = """
 <!DOCTYPE html>
 
-<html lang="en">
+<html>
 
 <head>
 
 <meta charset="UTF-8">
 
-<meta name="viewport"
-content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 
 <title>AI Career Agent</title>
-
 
 <style>
 
 * {
     box-sizing: border-box;
-    margin: 0;
-    padding: 0;
 }
-
 
 body {
 
-    font-family:
-    Arial,
-    Helvetica,
-    sans-serif;
+    margin: 0;
 
-    background: #f5f7fb;
+    font-family: Arial, sans-serif;
 
-    color: #172033;
+    background: #f4f7fb;
 
-    line-height: 1.6;
+    color: #1f2937;
+
 }
-
-
-/* =====================================================
-   NAVBAR
-   ===================================================== */
 
 .navbar {
-
-    height: 70px;
-
-    background: white;
-
-    border-bottom: 1px solid #e5e7eb;
-
-    display: flex;
-
-    align-items: center;
-
-    justify-content: space-between;
-
-    padding: 0 6%;
-
-}
-
-
-.logo {
-
-    display: flex;
-
-    align-items: center;
-
-    gap: 10px;
-
-    font-size: 20px;
-
-    font-weight: bold;
-}
-
-
-.logo-icon {
-
-    width: 40px;
-
-    height: 40px;
 
     background: #111827;
 
     color: white;
 
-    border-radius: 11px;
+    padding: 18px 40px;
 
     display: flex;
 
+    justify-content: space-between;
+
     align-items: center;
 
-    justify-content: center;
+}
+
+.logo {
+
+    font-size: 22px;
 
     font-weight: bold;
+
 }
 
+.navbar span {
 
-.logo span {
+    color: #9ca3af;
 
-    color: #2563eb;
+    font-size: 14px;
+
 }
-
-
-.badge {
-
-    background: #eef4ff;
-
-    color: #2563eb;
-
-    padding: 6px 13px;
-
-    border-radius: 20px;
-
-    font-size: 13px;
-
-    font-weight: bold;
-}
-
-
-/* =====================================================
-   HERO
-   ===================================================== */
-
-.hero {
-
-    max-width: 1050px;
-
-    margin: auto;
-
-    text-align: center;
-
-    padding: 60px 25px 35px;
-}
-
-
-.hero h1 {
-
-    font-size: 46px;
-
-    line-height: 1.15;
-
-    margin-bottom: 18px;
-}
-
-
-.hero h1 span {
-
-    color: #2563eb;
-}
-
-
-.hero p {
-
-    max-width: 720px;
-
-    margin: auto;
-
-    color: #64748b;
-
-    font-size: 17px;
-}
-
-
-/* =====================================================
-   MAIN
-   ===================================================== */
 
 .container {
 
-    max-width: 1100px;
+    max-width: 1200px;
 
-    margin: auto;
+    margin: 40px auto;
 
-    padding: 10px 25px 60px;
+    padding: 0 20px;
+
 }
 
+.hero {
 
-/* =====================================================
-   TOOLS
-   ===================================================== */
+    text-align: center;
+
+    margin-bottom: 35px;
+
+}
+
+.hero h1 {
+
+    font-size: 38px;
+
+    margin-bottom: 10px;
+
+}
+
+.hero p {
+
+    color: #6b7280;
+
+    font-size: 17px;
+
+}
 
 .tools {
 
     display: grid;
 
-    grid-template-columns:
-    repeat(4, 1fr);
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
 
-    gap: 15px;
+    gap: 18px;
 
-    margin-bottom: 25px;
+    margin-bottom: 30px;
+
 }
-
 
 .tool {
 
     background: white;
 
-    border: 1px solid #e5e9f0;
+    padding: 22px;
 
     border-radius: 14px;
 
-    padding: 18px;
+    border: 2px solid transparent;
 
     cursor: pointer;
 
     transition: 0.2s;
 
-    text-align: left;
-}
+    box-shadow: 0 4px 15px rgba(0,0,0,0.05);
 
+}
 
 .tool:hover {
 
-    border-color: #2563eb;
+    transform: translateY(-3px);
 
-    transform: translateY(-2px);
 }
-
 
 .tool.active {
 
-    border: 2px solid #2563eb;
+    border-color: #2563eb;
 
-    background: #f8fbff;
 }
 
+.tool h3 {
 
-.tool-icon {
+    margin: 8px 0;
 
-    font-size: 25px;
-
-    margin-bottom: 8px;
 }
 
+.tool p {
 
-.tool-title {
+    font-size: 13px;
 
-    font-weight: bold;
+    color: #6b7280;
 
-    font-size: 15px;
 }
 
-
-.tool-description {
-
-    color: #64748b;
-
-    font-size: 12px;
-
-    margin-top: 4px;
-}
-
-
-/* =====================================================
-   INPUT CARD
-   ===================================================== */
-
-.input-card {
+.form-box {
 
     background: white;
 
-    border: 1px solid #e5e9f0;
+    padding: 28px;
 
     border-radius: 16px;
 
-    padding: 25px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.06);
 
-    box-shadow:
-    0 8px 25px
-    rgba(15, 23, 42, 0.04);
 }
 
-
-.input-title {
-
-    font-size: 19px;
-
-    font-weight: bold;
-
-    margin-bottom: 6px;
-}
-
-
-.input-subtitle {
-
-    color: #64748b;
-
-    font-size: 14px;
-
-    margin-bottom: 18px;
-}
-
-
-textarea {
-
-    width: 100%;
-
-    height: 220px;
-
-    resize: vertical;
-
-    border:
-    1px solid #dce2ea;
-
-    border-radius: 12px;
-
-    padding: 15px;
-
-    font-family: Arial;
-
-    font-size: 14px;
-
-    outline: none;
-
-    background: #fafbfc;
-}
-
-
-textarea:focus {
-
-    border-color: #2563eb;
-
-    background: white;
-}
-
-
-.second-input {
-
-    display: none;
-
-    margin-top: 18px;
-}
-
-
-.second-input label {
+label {
 
     display: block;
 
     font-weight: bold;
 
+    margin-top: 15px;
+
     margin-bottom: 8px;
+
 }
 
+textarea {
 
-.action-row {
+    width: 100%;
 
-    display: flex;
+    min-height: 150px;
 
-    justify-content: center;
+    padding: 14px;
 
-    gap: 12px;
+    border: 1px solid #d1d5db;
 
-    margin-top: 20px;
+    border-radius: 10px;
+
+    resize: vertical;
+
+    font-family: Arial;
+
 }
-
 
 button {
+
+    margin-top: 20px;
+
+    padding: 13px 25px;
 
     border: none;
 
     border-radius: 10px;
 
-    padding: 13px 25px;
-
-    font-size: 15px;
-
-    font-weight: bold;
-
-    cursor: pointer;
-}
-
-
-.primary {
-
     background: #2563eb;
 
     color: white;
 
-    min-width: 190px;
+    font-size: 16px;
+
+    cursor: pointer;
+
 }
 
-
-.primary:hover {
+button:hover {
 
     background: #1d4ed8;
+
 }
 
+.clear {
 
-.secondary {
+    background: #6b7280;
+
+    margin-left: 8px;
+
+}
+
+.result {
+
+    margin-top: 30px;
 
     background: white;
 
-    color: #475569;
+    padding: 28px;
 
-    border: 1px solid #dce2ea;
+    border-radius: 16px;
+
+    box-shadow: 0 4px 20px rgba(0,0,0,0.06);
+
 }
 
+.result pre {
 
-/* =====================================================
-   LOADING
-   ===================================================== */
+    white-space: pre-wrap;
+
+    font-family: Arial;
+
+    line-height: 1.7;
+
+}
 
 .loading {
 
     display: none;
 
-    text-align: center;
+    margin-top: 20px;
 
-    padding: 25px;
+    color: #2563eb;
 
-    color: #64748b;
-}
-
-
-.spinner {
-
-    display: inline-block;
-
-    width: 20px;
-
-    height: 20px;
-
-    border:
-    3px solid #dbe5ff;
-
-    border-top:
-    3px solid #2563eb;
-
-    border-radius: 50%;
-
-    animation:
-    spin 0.8s linear infinite;
-
-    vertical-align: middle;
-
-    margin-right: 8px;
-}
-
-
-@keyframes spin {
-
-    to {
-        transform: rotate(360deg);
-    }
-
-}
-
-
-/* =====================================================
-   RESULT
-   ===================================================== */
-
-.result {
-
-    display: none;
-
-    margin-top: 25px;
-}
-
-
-.result-header {
-
-    background: white;
-
-    border:
-    1px solid #e5e9f0;
-
-    border-radius: 16px;
-
-    padding: 25px;
-
-    margin-bottom: 20px;
-}
-
-
-.result-header h2 {
-
-    margin-bottom: 5px;
-}
-
-
-.result-header p {
-
-    color: #64748b;
-
-    font-size: 14px;
-}
-
-
-.report {
-
-    background: white;
-
-    border:
-    1px solid #e5e9f0;
-
-    border-radius: 16px;
-
-    padding: 28px;
-
-    white-space: pre-wrap;
-
-    color: #334155;
-
-    line-height: 1.8;
-
-    font-size: 14px;
-
-    box-shadow:
-    0 8px 25px
-    rgba(15, 23, 42, 0.04);
-}
-
-
-/* =====================================================
-   FOOTER
-   ===================================================== */
-
-.footer {
-
-    text-align: center;
-
-    padding: 35px;
-
-    color: #94a3b8;
-
-    font-size: 13px;
-}
-
-
-/* =====================================================
-   RESPONSIVE
-   ===================================================== */
-
-@media(max-width: 900px) {
-
-    .tools {
-
-        grid-template-columns:
-        repeat(2, 1fr);
-    }
-
-}
-
-
-@media(max-width: 600px) {
-
-    .tools {
-
-        grid-template-columns: 1fr;
-    }
-
-    .hero h1 {
-
-        font-size: 35px;
-    }
-
-    .navbar {
-
-        padding: 0 20px;
-    }
+    font-weight: bold;
 
 }
 
@@ -1042,752 +653,354 @@ button {
 <body>
 
 
-<!-- =====================================================
-     NAVBAR
-     ===================================================== -->
+<div class="navbar">
 
-<nav class="navbar">
+    <div class="logo">🤖 AI Career Agent</div>
 
-    <div class="logo">
+    <span>AI-powered career assistant</span>
 
-        <div class="logo-icon">
-            AI
-        </div>
-
-        AI Career
-        <span>Agent</span>
-
-    </div>
+</div>
 
 
-    <div class="badge">
-        AI Powered
-    </div>
-
-</nav>
+<div class="container">
 
 
-<!-- =====================================================
-     HERO
-     ===================================================== -->
+<div class="hero">
 
-<section class="hero">
-
-    <h1>
-
-        Your Personal
-        <span>AI Career Agent</span>
-
-    </h1>
-
+    <h1>Build Your AI Career 🚀</h1>
 
     <p>
 
-        Analyze your resume, match jobs,
-        discover skill gaps, improve your resume,
-        prepare for interviews and build your
-        personalized career roadmap.
+        Analyze your resume, match jobs, find skill gaps,
+
+        improve your career profile and prepare for interviews.
 
     </p>
 
-</section>
+</div>
 
-
-<!-- =====================================================
-     MAIN
-     ===================================================== -->
-
-<main class="container">
-
-
-<!-- TOOLS -->
 
 <div class="tools">
 
 
-    <div
-        class="tool active"
-        data-tool="resume"
-        onclick="selectTool('resume', this)"
-    >
+<div class="tool active" onclick="selectTool('resume', this)">
 
-        <div class="tool-icon">
-            📄
-        </div>
+    📄
 
-        <div class="tool-title">
-            Resume Analyzer
-        </div>
+    <h3>Resume Analyzer</h3>
 
-        <div class="tool-description">
-            Analyze your resume
-        </div>
+    <p>Analyze your resume and get improvement suggestions.</p>
 
-    </div>
+</div>
 
 
-    <div
-        class="tool"
-        data-tool="job"
-        onclick="selectTool('job', this)"
-    >
+<div class="tool" onclick="selectTool('job', this)">
 
-        <div class="tool-icon">
-            🎯
-        </div>
+    🎯
 
-        <div class="tool-title">
-            Job Match
-        </div>
+    <h3>Job Match</h3>
 
-        <div class="tool-description">
-            Compare resume with jobs
-        </div>
+    <p>Compare your resume with a job description.</p>
 
-    </div>
+</div>
 
 
-    <div
-        class="tool"
-        data-tool="skills"
-        onclick="selectTool('skills', this)"
-    >
+<div class="tool" onclick="selectTool('skills', this)">
 
-        <div class="tool-icon">
-            🛠️
-        </div>
+    🛠️
 
-        <div class="tool-title">
-            Skill Gap
-        </div>
+    <h3>Skill Gap</h3>
 
-        <div class="tool-description">
-            Find skills to learn
-        </div>
+    <p>Find missing skills required for your career.</p>
 
-    </div>
+</div>
 
 
-    <div
-        class="tool"
-        data-tool="improve"
-        onclick="selectTool('improve', this)"
-    >
+<div class="tool" onclick="selectTool('improve', this)">
 
-        <div class="tool-icon">
-            ✍️
-        </div>
+    ✍️
 
-        <div class="tool-title">
-            Resume Improver
-        </div>
+    <h3>Resume Improver</h3>
 
-        <div class="tool-description">
-            Improve your resume
-        </div>
+    <p>Improve your resume using ATS-friendly language.</p>
 
-    </div>
+</div>
 
 
-    <div
-        class="tool"
-        data-tool="cover"
-        onclick="selectTool('cover', this)"
-    >
+<div class="tool" onclick="selectTool('cover', this)">
 
-        <div class="tool-icon">
-            📝
-        </div>
+    📝
 
-        <div class="tool-title">
-            Cover Letter
-        </div>
+    <h3>Cover Letter</h3>
 
-        <div class="tool-description">
-            Generate a cover letter
-        </div>
+    <p>Create a professional job application cover letter.</p>
 
-    </div>
+</div>
 
 
-    <div
-        class="tool"
-        data-tool="projects"
-        onclick="selectTool('projects', this)"
-    >
+<div class="tool" onclick="selectTool('projects', this)">
 
-        <div class="tool-icon">
-            💡
-        </div>
+    💡
 
-        <div class="tool-title">
-            Project Ideas
-        </div>
+    <h3>Project Ideas</h3>
 
-        <div class="tool-description">
-            Get portfolio projects
-        </div>
+    <p>Get practical AI/ML project recommendations.</p>
 
-    </div>
+</div>
 
 
-    <div
-        class="tool"
-        data-tool="roadmap"
-        onclick="selectTool('roadmap', this)"
-    >
+<div class="tool" onclick="selectTool('roadmap', this)">
 
-        <div class="tool-icon">
-            📚
-        </div>
+    📚
 
-        <div class="tool-title">
-            Learning Roadmap
-        </div>
+    <h3>Learning Roadmap</h3>
 
-        <div class="tool-description">
-            Build your career plan
-        </div>
+    <p>Get a personalized AI/ML learning roadmap.</p>
 
-    </div>
+</div>
 
 
-    <div
-        class="tool"
-        data-tool="interview"
-        onclick="selectTool('interview', this)"
-    >
+<div class="tool" onclick="selectTool('interview', this)">
 
-        <div class="tool-icon">
-            🎤
-        </div>
+    🎤
 
-        <div class="tool-title">
-            Mock Interview
-        </div>
+    <h3>Mock Interview</h3>
 
-        <div class="tool-description">
-            Practice interviews
-        </div>
+    <p>Practice technical and HR interview questions.</p>
 
-    </div>
+</div>
+
+
+<div class="tool" onclick="selectTool('chat', this)">
+
+    💬
+
+    <h3>Career Chat</h3>
+
+    <p>Ask the AI Career Agent career-related questions.</p>
+
+</div>
 
 
 </div>
 
 
-<!-- INPUT -->
-
-<div class="input-card">
+<div class="form-box">
 
 
-    <div class="input-title"
-         id="inputTitle">
-
-        Resume Analyzer
-
-    </div>
+<h2 id="toolTitle">📄 Resume Analyzer</h2>
 
 
-    <div class="input-subtitle"
-         id="inputSubtitle">
+<label>Resume</label>
 
-        Paste your resume below and let AI
-        analyze your career profile.
+<textarea
 
-    </div>
+id="resume"
 
-
-    <textarea
-        id="mainText"
-        placeholder="Paste your resume here..."
-    ></textarea>
+placeholder="Paste your resume here..."></textarea>
 
 
-    <!-- SECOND INPUT -->
+<label id="jobLabel">Job Description</label>
 
-    <div
-        class="second-input"
-        id="secondInput"
-    >
+<textarea
 
-        <label id="secondLabel">
+id="job"
 
-            Job Description
-
-        </label>
+placeholder="Paste the job description here if required..."></textarea>
 
 
-        <textarea
-            id="secondText"
-            placeholder="Paste the job description here..."
-        ></textarea>
+<label id="textLabel">Question / Additional Information</label>
 
-    </div>
+<textarea
 
+id="text"
 
-    <!-- BUTTONS -->
-
-    <div class="action-row">
-
-        <button
-            class="primary"
-            onclick="runAgent()"
-        >
-
-            Run AI Agent
-
-        </button>
+placeholder="Enter your question if required..."></textarea>
 
 
-        <button
-            class="secondary"
-            onclick="clearInputs()"
-        >
+<button onclick="runAgent()">
 
-            Clear
+    🚀 Run AI Agent
 
-        </button>
+</button>
 
-    </div>
+
+<button class="clear" onclick="clearInputs()">
+
+    Clear
+
+</button>
+
+
+<div class="loading" id="loading">
+
+    🤖 AI is analyzing... Please wait.
+
+</div>
 
 
 </div>
 
 
-<!-- LOADING -->
+<div class="result">
 
-<div
-    class="loading"
-    id="loading"
->
+<h2>📊 AI Report</h2>
 
-    <span class="spinner"></span>
+<pre id="result">
 
-    AI Career Agent is working...
+Your AI analysis will appear here.
+
+</pre>
 
 </div>
 
 
-<!-- RESULT -->
-
-<section
-    class="result"
-    id="result"
->
-
-
-    <div class="result-header">
-
-        <h2>
-            AI Career Report
-        </h2>
-
-        <p>
-            Generated by your AI Career Agent
-        </p>
-
-    </div>
-
-
-    <div
-        class="report"
-        id="report"
-    ></div>
-
-
-</section>
-
-
-</main>
-
-
-<!-- FOOTER -->
-
-<footer class="footer">
-
-    AI Career Agent · Built with Python,
-    FastAPI, LangChain and Gemini
-
-</footer>
+</div>
 
 
 <script>
 
 
-// ========================================================
-// CURRENT TOOL
-// ========================================================
+let selectedTool = "resume";
 
-let currentTool = "resume";
-
-
-// ========================================================
-// TOOL INFORMATION
-// ========================================================
-
-const toolInfo = {
-
-    resume: {
-
-        title: "Resume Analyzer",
-
-        subtitle:
-        "Paste your resume below and let AI analyze your career profile.",
-
-        placeholder:
-        "Paste your resume here...",
-
-        second: false
-
-    },
-
-
-    job: {
-
-        title: "Job Match Analyzer",
-
-        subtitle:
-        "Compare your resume with a target job description.",
-
-        placeholder:
-        "Paste your resume here...",
-
-        second: true
-
-    },
-
-
-    skills: {
-
-        title: "Skill Gap Analyzer",
-
-        subtitle:
-        "Discover the skills you need to learn for your target job.",
-
-        placeholder:
-        "Paste your resume and current skills here...",
-
-        second: true
-
-    },
-
-
-    improve: {
-
-        title: "AI Resume Improver",
-
-        subtitle:
-        "Improve your resume while keeping your real experience.",
-
-        placeholder:
-        "Paste your current resume here...",
-
-        second: true
-
-    },
-
-
-    cover: {
-
-        title: "Cover Letter Generator",
-
-        subtitle:
-        "Generate a professional job-specific cover letter.",
-
-        placeholder:
-        "Paste your resume here...",
-
-        second: true
-
-    },
-
-
-    projects: {
-
-        title: "AI Project Advisor",
-
-        subtitle:
-        "Get portfolio project ideas based on your career target.",
-
-        placeholder:
-        "Paste your resume and current skills here...",
-
-        second: true
-
-    },
-
-
-    roadmap: {
-
-        title: "Learning Roadmap",
-
-        subtitle:
-        "Build a personalized learning path for your career goal.",
-
-        placeholder:
-        "Paste your resume and current skills here...",
-
-        second: true
-
-    },
-
-
-    interview: {
-
-        title: "AI Mock Interview",
-
-        subtitle:
-        "Generate a personalized technical and behavioral interview.",
-
-        placeholder:
-        "Paste your resume here...",
-
-        second: true
-
-    }
-
-};
-
-
-// ========================================================
-// SELECT TOOL
-// ========================================================
 
 function selectTool(tool, element) {
 
-    currentTool = tool;
+
+    selectedTool = tool;
 
 
-    document
-        .querySelectorAll(".tool")
-        .forEach(
-            item =>
-                item.classList.remove("active")
-        );
+    document.querySelectorAll(".tool").forEach(function(card) {
+
+        card.classList.remove("active");
+
+    });
 
 
     element.classList.add("active");
 
 
-    const info =
-        toolInfo[tool];
+    const titles = {
+
+        resume: "📄 Resume Analyzer",
+
+        job: "🎯 Job Match",
+
+        skills: "🛠️ Skill Gap Analyzer",
+
+        improve: "✍️ Resume Improver",
+
+        cover: "📝 Cover Letter Generator",
+
+        projects: "💡 Project Suggestions",
+
+        roadmap: "📚 Learning Roadmap",
+
+        interview: "🎤 Mock Interview",
+
+        chat: "💬 Career Chat"
+
+    };
 
 
-    document.getElementById(
-        "inputTitle"
-    ).textContent =
-        info.title;
-
-
-    document.getElementById(
-        "inputSubtitle"
-    ).textContent =
-        info.subtitle;
-
-
-    document.getElementById(
-        "mainText"
-    ).placeholder =
-        info.placeholder;
-
-
-    const second =
-        document.getElementById(
-            "secondInput"
-        );
-
-
-    if (info.second) {
-
-        second.style.display =
-            "block";
-
-    } else {
-
-        second.style.display =
-            "none";
-
-    }
-
-
-    document.getElementById(
-        "result"
-    ).style.display =
-        "none";
+    document.getElementById("toolTitle").innerText = titles[tool];
 
 }
 
 
-// ========================================================
-// RUN AGENT
-// ========================================================
-
 async function runAgent() {
 
-    const mainText =
-        document.getElementById(
-            "mainText"
-        ).value.trim();
+
+    const resume = document.getElementById("resume").value;
+
+    const job = document.getElementById("job").value;
+
+    const text = document.getElementById("text").value;
 
 
-    const secondText =
-        document.getElementById(
-            "secondText"
-        ).value.trim();
+    const loading = document.getElementById("loading");
+
+    const result = document.getElementById("result");
 
 
-    if (!mainText) {
+    loading.style.display = "block";
 
-        alert(
-            "Please enter the required information."
-        );
-
-        return;
-
-    }
-
-
-    if (
-        toolInfo[currentTool].second
-        &&
-        !secondText
-    ) {
-
-        alert(
-            "Please provide the second input."
-        );
-
-        return;
-
-    }
-
-
-    const loading =
-        document.getElementById(
-            "loading"
-        );
-
-
-    const result =
-        document.getElementById(
-            "result"
-        );
-
-
-    loading.style.display =
-        "block";
-
-
-    result.style.display =
-        "none";
+    result.innerText = "AI is working...";
 
 
     try {
 
-        const response =
-            await fetch(
-                "/career",
-                {
 
-                    method: "POST",
+        const response = await fetch("/career", {
 
-                    headers: {
+            method: "POST",
 
-                        "Content-Type":
-                        "application/json"
+            headers: {
 
-                    },
+                "Content-Type": "application/json"
 
-                    body:
-                    JSON.stringify({
+            },
 
-                        tool:
-                        currentTool,
+            body: JSON.stringify({
 
-                        resume:
-                        currentTool === "chat"
-                        ? ""
-                        : mainText,
+                resume: resume,
 
-                        job_description:
-                        toolInfo[currentTool].second
-                        ? secondText
-                        : "",
+                job_description: job,
 
-                        text:
-                        mainText
+                text: text,
 
-                    })
+                tool: selectedTool
 
-                }
-            );
+            })
 
-
-        const data =
-            await response.json();
-
-
-        document.getElementById(
-            "report"
-        ).textContent =
-            data.result ||
-            "No result returned.";
-
-
-        result.style.display =
-            "block";
-
-
-        result.scrollIntoView({
-            behavior: "smooth"
         });
 
 
-    } catch (error) {
-
-        document.getElementById(
-            "report"
-        ).textContent =
-            "Something went wrong: "
-            + error.message;
+        const data = await response.json();
 
 
-        result.style.display =
-            "block";
+        result.innerText = data.result;
 
-    } finally {
 
-        loading.style.display =
-            "none";
+    }
+
+
+    catch (error) {
+
+
+        result.innerText =
+
+            "Something went wrong. Please try again.";
+
+
+    }
+
+
+    finally {
+
+
+        loading.style.display = "none";
 
     }
 
 }
 
 
-// ========================================================
-// CLEAR
-// ========================================================
-
 function clearInputs() {
 
-    document.getElementById(
-        "mainText"
-    ).value = "";
 
+    document.getElementById("resume").value = "";
 
-    document.getElementById(
-        "secondText"
-    ).value = "";
+    document.getElementById("job").value = "";
 
+    document.getElementById("text").value = "";
 
-    document.getElementById(
-        "result"
-    ).style.display =
-        "none";
+    document.getElementById("result").innerText =
+
+        "Your AI analysis will appear here.";
 
 }
+
 
 </script>
 
@@ -1814,12 +1027,7 @@ def home():
 
 if __name__ == "__main__":
 
-    port = int(
-        os.environ.get(
-            "PORT",
-            8000
-        )
-    )
+    port = int(os.environ.get("PORT", 8000))
 
     uvicorn.run(
         app,
